@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aetherion AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" disabled>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    <path d="M2 12h20"/>
+                </svg>
+                <span>Aetherion AI</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <button class="nav-item active" onclick="newChat()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+                New Chat
+            </button>
+
+            <div class="nav-section">
+                <span class="nav-section-title">Tools</span>
+                <a class="nav-item" href="/graph" target="_blank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/>
+                        <circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/>
+                        <path d="M6 9v6M18 9v6M9 6h6M9 18h6"/>
+                    </svg>
+                    Relationship Graph
+                </a>
+                <button class="nav-item" onclick="openSessionRecap()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                        <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+                    </svg>
+                    Session Recap
+                </button>
+                <button class="nav-item" onclick="openConsistencyChecker()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 11l3 3L22 4"/>
+                        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                    </svg>
+                    Consistency Check
+                </button>
+            </div>
+
+            <div class="nav-section">
+                <span class="nav-section-title">Character Voice</span>
+                <div class="character-search-wrapper">
+                    <input type="text" id="character-search" class="character-search" placeholder="Search characters..." oninput="filterCharacters()">
+                    <select id="character-select" class="character-select" onchange="updateCharacter()">
+                        <option value="">Speak as Aetherion</option>
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <span class="nav-section-title">History</span>
+                <div id="chat-history" class="chat-history">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="theme-toggle" onclick="toggleTheme()">
+                <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <span>Theme</span>
+            </div>
+            <button class="nav-item" onclick="openSettings()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/>
+                </svg>
+                Settings
+            </button>
+            <div class="stats" id="vault-stats">
+                <span class="stat-item">Loading...</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Welcome Screen (shown when no messages) -->
+        <div id="welcome-screen" class="welcome-screen">
+            <h1>Explore the world of <span class="gradient-text">Gryia</span></h1>
+            <p class="subtitle">Ask questions about your lore, generate content, or plan your next session</p>
+
+            <div class="quick-actions">
+                <button class="quick-action" onclick="sendQuickAction('Tell me about the Covenant of the Stormborn')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                    Explore religions
+                </button>
+                <button class="quick-action" onclick="sendQuickAction('What are the major kingdoms and their relationships?')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 21h18M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16"/>
+                    </svg>
+                    Kingdoms overview
+                </button>
+                <button class="quick-action" onclick="sendQuickAction('Generate an NPC for a tavern in Athamos')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="8" r="5"/>
+                        <path d="M20 21a8 8 0 10-16 0"/>
+                    </svg>
+                    Create NPC
+                </button>
+                <button class="quick-action" onclick="sendQuickAction('Find gaps in my world-building')">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    Find gaps
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Messages -->
+        <div id="chat-container" class="chat-container hidden">
+            <div id="messages" class="messages">
+                <!-- Messages populated by JS -->
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div class="input-wrapper">
+                <div class="input-row">
+                    <textarea
+                        id="message-input"
+                        placeholder="Ask about your world..."
+                        rows="1"
+                        onkeydown="handleKeyDown(event)"
+                        oninput="autoResize(this)"
+                    ></textarea>
+                    <button id="send-btn" class="send-btn" onclick="prepareMessage()" disabled>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13"/>
+                            <path d="M22 2l-7 20-4-9-9-4 20-7z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="input-footer">
+                    <div class="input-options">
+                        <select id="provider-select" onchange="updateProvider()">
+                            <option value="gpt">GPT</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="anthropic">Claude</option>
+                            <option value="ollama">Ollama</option>
+                            <option value="groq">Groq</option>
+                        </select>
+                        <label class="toggle">
+                            <input type="checkbox" id="deep-search" />
+                            <span>Deep search</span>
+                        </label>
+                        <label class="toggle">
+                            <input type="checkbox" id="show-sources" checked />
+                            <span>Show sources</span>
+                        </label>
+                        <label class="toggle">
+                            <input type="checkbox" id="confirm-send" checked />
+                            <span>Confirm</span>
+                        </label>
+                    </div>
+                    <div id="cost-estimate" class="cost-estimate"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Confirm Panel (shows before sending) -->
+        <div id="confirm-panel" class="confirm-panel hidden">
+            <div class="confirm-content">
+                <div class="confirm-header">
+                    <h3>Review before sending</h3>
+                    <button class="close-btn" onclick="cancelSend()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="confirm-section">
+                    <div class="confirm-label">Your message:</div>
+                    <div id="confirm-message" class="confirm-message"></div>
+                </div>
+
+                <div class="confirm-section">
+                    <div class="confirm-label">
+                        <span>Sources found: <strong id="source-count">0</strong></span>
+                        <div class="source-actions">
+                            <button class="btn-secondary btn-sm" onclick="fetchMoreSources()">+ More</button>
+                            <button class="btn-secondary btn-sm" onclick="toggleConfirmSources()">View</button>
+                        </div>
+                    </div>
+                    <div id="confirm-sources" class="confirm-sources hidden"></div>
+                </div>
+
+                <div class="confirm-section">
+                    <div class="confirm-cost">
+                        <div class="cost-breakdown">
+                            <div class="cost-row">
+                                <span>Input tokens:</span>
+                                <span id="cost-input-tokens">0</span>
+                            </div>
+                            <div class="cost-row">
+                                <span>Expected output:</span>
+                                <span id="cost-output-tokens">~500</span>
+                            </div>
+                            <div class="cost-row cost-total">
+                                <span>Estimated cost:</span>
+                                <span id="cost-total">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="confirm-actions">
+                    <button class="btn-secondary" onclick="cancelSend()">Cancel</button>
+                    <button class="btn-primary" onclick="confirmAndSend()">Send to LLM</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Sources Panel -->
+    <aside id="sources-panel" class="sources-panel hidden">
+        <div class="sources-header">
+            <h3>Sources</h3>
+            <button class="close-btn" onclick="toggleSourcesPanel()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div id="sources-list" class="sources-list">
+            <!-- Populated by JS -->
+        </div>
+    </aside>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="close-btn" onclick="closeSettings()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>Default Provider</label>
+                    <select id="default-provider">
+                        <option value="gpt">OpenAI GPT</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="anthropic">Anthropic Claude</option>
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="groq">Groq</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Context chunks</label>
+                    <input type="number" id="context-size" value="20" min="5" max="50" />
+                </div>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="auto-scroll" checked />
+                        Auto-scroll on new messages
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Recap Modal -->
+    <div id="session-recap-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Session Recap Generator</h2>
+                <button class="close-btn" onclick="closeSessionRecap()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>Session Number (optional)</label>
+                    <input type="number" id="session-number" placeholder="e.g., 42" />
+                </div>
+                <div class="setting-group">
+                    <label>Paste your rough session notes:</label>
+                    <textarea id="session-notes" rows="10" placeholder="Paste your session notes here..."></textarea>
+                </div>
+                <button class="btn-primary" onclick="generateRecap()">Generate Recap</button>
+                <div id="recap-output" class="recap-output hidden">
+                    <div class="recap-header">
+                        <h3>Generated Recap</h3>
+                        <button class="btn-secondary btn-sm" onclick="saveRecapToVault()">Save to Vault</button>
+                    </div>
+                    <div id="recap-content" class="recap-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Consistency Checker Modal -->
+    <div id="consistency-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Consistency Checker</h2>
+                <button class="close-btn" onclick="closeConsistencyChecker()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>Select an entity to check:</label>
+                    <select id="entity-select" class="entity-select">
+                        <option value="">Loading entities...</option>
+                    </select>
+                    <p class="help-text">Entities that appear in multiple files are shown. More mentions = more potential for inconsistencies.</p>
+                </div>
+                <button class="btn-primary" onclick="runConsistencyCheck()">Check Consistency</button>
+                <div id="consistency-output" class="consistency-output hidden">
+                    <div id="consistency-content" class="consistency-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save to Vault Modal -->
+    <div id="save-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Save to Vault</h2>
+                <button class="close-btn" onclick="closeSaveModal()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label>Filename</label>
+                    <input type="text" id="save-filename" placeholder="My New Note" />
+                </div>
+                <div class="setting-group">
+                    <label>Folder</label>
+                    <select id="save-folder">
+                        <option value="Notes">Notes</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="save-auto-link" checked />
+                        Auto-link entity names to [[wiki-links]]
+                    </label>
+                </div>
+                <div class="setting-group">
+                    <label>Preview:</label>
+                    <div id="save-preview" class="save-preview"></div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeSaveModal()">Cancel</button>
+                    <button class="btn-primary" onclick="confirmSaveToVault()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

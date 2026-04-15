@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relationship Graph - Aetherion</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0a0;
+            --accent: #7c3aed;
+            --accent-hover: #8b5cf6;
+            --border: #2d2d44;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --text-primary: #1a1a1a;
+            --text-secondary: #666666;
+            --border: #e0e0e0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .controls select, .controls input {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+
+        .controls button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .controls button:hover {
+            background: var(--accent-hover);
+        }
+
+        #graph {
+            width: 100vw;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+        }
+
+        .node {
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .node circle {
+            stroke: var(--border);
+            stroke-width: 2px;
+            transition: stroke-width 0.2s, r 0.2s;
+        }
+
+        .node:hover circle {
+            stroke-width: 4px;
+            filter: brightness(1.2);
+        }
+
+        .node.highlighted circle {
+            stroke: var(--accent);
+            stroke-width: 4px;
+        }
+
+        .node.pinned circle {
+            stroke: #f59e0b;
+            stroke-width: 3px;
+        }
+
+        .node.dimmed {
+            opacity: 0.15;
+        }
+
+        .node text {
+            font-size: 11px;
+            fill: var(--text-primary);
+            pointer-events: none;
+            transition: font-size 0.2s;
+        }
+
+        .node.highlighted text {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .link {
+            stroke: var(--border);
+            stroke-opacity: 0.6;
+            transition: stroke-opacity 0.2s, stroke-width 0.2s;
+        }
+
+        .link.highlighted {
+            stroke: var(--accent);
+            stroke-opacity: 1;
+        }
+
+        .link.dimmed {
+            stroke-opacity: 0.05;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.875rem;
+            max-width: 300px;
+            z-index: 200;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .tooltip h3 {
+            margin-bottom: 8px;
+            color: var(--accent);
+        }
+
+        .tooltip p {
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.75rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .legend-item:hover {
+            background: var(--border);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .context-menu {
+            position: absolute;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 0;
+            z-index: 300;
+            min-width: 180px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .context-menu-item:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        .context-menu-divider {
+            height: 1px;
+            background: var(--border);
+            margin: 4px 0;
+        }
+
+        .help-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 0.75rem;
+            max-width: 250px;
+            display: none;
+        }
+
+        .help-panel.visible {
+            display: block;
+        }
+
+        .help-panel h4 {
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+
+        .help-panel kbd {
+            background: var(--bg-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            border: 1px solid var(--border);
+        }
+
+        .help-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .info-panel {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 0.875rem;
+            max-width: 300px;
+            display: none;
+        }
+
+        .info-panel.visible {
+            display: block;
+        }
+
+        .info-panel h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+        }
+
+        .info-panel .connections-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+
+        .info-panel .connection-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .info-panel .connection-item:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        .controls button.active {
+            background: var(--accent-hover);
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <a href="/">Aetherion</a> / Relationship Graph
+        </h1>
+        <div class="controls">
+            <input type="text" id="search" placeholder="Search entities...">
+            <select id="filter-group">
+                <option value="">All Groups</option>
+            </select>
+            <button onclick="resetView()">Reset View</button>
+            <button onclick="togglePhysics()" id="physics-btn">Pause Physics</button>
+            <button onclick="toggleHelp()">Help (?)</button>
+            <button onclick="toggleTheme()">Theme</button>
+        </div>
+    </div>
+
+    <div id="graph"></div>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <div class="legend" id="legend"></div>
+
+    <div class="stats" id="stats">Loading...</div>
+
+    <div class="context-menu" id="context-menu" style="display: none;"></div>
+
+    <div class="info-panel" id="info-panel">
+        <h3 id="info-title">Select a node</h3>
+        <div id="info-content"></div>
+        <div class="connections-list" id="connections-list"></div>
+    </div>
+
+    <div class="help-panel" id="help-panel">
+        <h4>Keyboard Shortcuts</h4>
+        <div class="help-row"><span>Reset view</span><kbd>Esc</kbd></div>
+        <div class="help-row"><span>Search</span><kbd>/</kbd></div>
+        <div class="help-row"><span>Toggle physics</span><kbd>Space</kbd></div>
+        <div class="help-row"><span>Close panels</span><kbd>Esc</kbd></div>
+        <h4 style="margin-top: 12px;">Mouse Actions</h4>
+        <div class="help-row"><span>Click</span>Highlight connections</div>
+        <div class="help-row"><span>Double-click</span>Focus & pin node</div>
+        <div class="help-row"><span>Right-click</span>Context menu</div>
+        <div class="help-row"><span>Drag</span>Move node</div>
+        <div class="help-row"><span>Scroll</span>Zoom in/out</div>
+        <div class="help-row"><span>Drag canvas</span>Pan view</div>
+    </div>
+
+    <script>
+        // Color palette for groups
+        const colors = d3.scaleOrdinal(d3.schemeTableau10);
+
+        let simulation, svg, g, link, node, zoom;
+        let graphData = { nodes: [], links: [] };
+        let selectedNode = null;
+        let pinnedNodes = new Set();
+        let physicsEnabled = true;
+
+        // Load and render graph
+        async function loadGraph() {
+            const response = await fetch('/api/graph');
+            graphData = await response.json();
+
+            // Update stats
+            document.getElementById('stats').innerHTML = `
+                ${graphData.nodes.length} entities<br>
+                ${graphData.links.length} connections
+            `;
+
+            // Populate group filter
+            const groups = [...new Set(graphData.nodes.map(n => n.group))].sort();
+            const filterSelect = document.getElementById('filter-group');
+            groups.forEach(g => {
+                const opt = document.createElement('option');
+                opt.value = g;
+                opt.textContent = g;
+                filterSelect.appendChild(opt);
+            });
+
+            // Build legend
+            const legend = document.getElementById('legend');
+            legend.innerHTML = `
+                <strong>Groups</strong>
+                <div class="legend-item" data-group="">
+                    <div class="legend-color" style="background: linear-gradient(45deg, #7c3aed, #ec4899)"></div>
+                    Show All
+                </div>
+            `;
+            groups.forEach(g => {
+                legend.innerHTML += `
+                    <div class="legend-item" data-group="${g}">
+                        <div class="legend-color" style="background: ${colors(g)}"></div>
+                        ${g}
+                    </div>
+                `;
+            });
+
+            renderGraph(graphData);
+        }
+
+        function renderGraph(data) {
+            const width = window.innerWidth;
+            const height = window.innerHeight - 60;
+
+            // Clear existing
+            d3.select('#graph').selectAll('*').remove();
+
+            svg = d3.select('#graph')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Zoom behavior
+            zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+
+            g = svg.append('g');
+
+            // Create simulation
+            simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-200))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(30));
+
+            // Draw links
+            link = g.append('g')
+                .attr('class', 'links')
+                .selectAll('line')
+                .data(data.links)
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', d => Math.sqrt(d.value));
+
+            // Calculate connection counts for node sizing
+            const connectionCounts = {};
+            data.links.forEach(l => {
+                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                connectionCounts[sourceId] = (connectionCounts[sourceId] || 0) + 1;
+                connectionCounts[targetId] = (connectionCounts[targetId] || 0) + 1;
+            });
+
+            // Draw nodes
+            node = g.append('g')
+                .attr('class', 'nodes')
+                .selectAll('g')
+                .data(data.nodes)
+                .enter().append('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended))
+                .on('click', nodeClicked)
+                .on('dblclick', nodeDoubleClicked)
+                .on('contextmenu', showContextMenu)
+                .on('mouseover', showTooltip)
+                .on('mouseout', hideTooltip);
+
+            node.append('circle')
+                .attr('r', d => {
+                    const baseSize = d.file ? 8 : 5;
+                    const connections = connectionCounts[d.id] || 0;
+                    return Math.min(baseSize + connections * 0.5, 20);
+                })
+                .attr('fill', d => colors(d.group));
+
+            node.append('text')
+                .attr('dx', 12)
+                .attr('dy', 4)
+                .text(d => d.id);
+
+            // Store connection counts on nodes
+            data.nodes.forEach(n => {
+                n.connectionCount = connectionCounts[n.id] || 0;
+            });
+
+            // Update positions on tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                node
+                    .attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active && physicsEnabled) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            // Keep pinned if in pinnedNodes set
+            if (!pinnedNodes.has(d.id)) {
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+        function nodeClicked(event, d) {
+            event.stopPropagation();
+            hideContextMenu();
+
+            // If clicking same node, deselect
+            if (selectedNode === d.id) {
+                clearSelection();
+                return;
+            }
+
+            selectedNode = d.id;
+            highlightConnections(d);
+            showInfoPanel(d);
+        }
+
+        function nodeDoubleClicked(event, d) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            // Toggle pin
+            if (pinnedNodes.has(d.id)) {
+                pinnedNodes.delete(d.id);
+                d.fx = null;
+                d.fy = null;
+            } else {
+                pinnedNodes.add(d.id);
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            // Update visual
+            node.classed('pinned', n => pinnedNodes.has(n.id));
+
+            // Focus on node
+            focusOnNode(d);
+        }
+
+        function highlightConnections(d) {
+            const connectedIds = new Set([d.id]);
+
+            graphData.links.forEach(l => {
+                if (l.source.id === d.id) connectedIds.add(l.target.id);
+                if (l.target.id === d.id) connectedIds.add(l.source.id);
+            });
+
+            node.classed('highlighted', n => n.id === d.id);
+            node.classed('dimmed', n => !connectedIds.has(n.id));
+
+            link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
+            link.classed('dimmed', l => l.source.id !== d.id && l.target.id !== d.id);
+        }
+
+        function clearSelection() {
+            selectedNode = null;
+            node.classed('highlighted', false).classed('dimmed', false);
+            link.classed('highlighted', false).classed('dimmed', false);
+            document.getElementById('info-panel').classList.remove('visible');
+        }
+
+        function focusOnNode(d) {
+            const scale = 1.5;
+            const x = -d.x * scale + window.innerWidth / 2;
+            const y = -d.y * scale + (window.innerHeight - 60) / 2;
+
+            svg.transition().duration(500).call(
+                zoom.transform,
+                d3.zoomIdentity.translate(x, y).scale(scale)
+            );
+        }
+
+        function showInfoPanel(d) {
+            const panel = document.getElementById('info-panel');
+            const title = document.getElementById('info-title');
+            const content = document.getElementById('info-content');
+            const connList = document.getElementById('connections-list');
+
+            title.textContent = d.id;
+
+            const connections = [];
+            graphData.links.forEach(l => {
+                if (l.source.id === d.id) connections.push({ id: l.target.id, node: l.target });
+                if (l.target.id === d.id) connections.push({ id: l.source.id, node: l.source });
+            });
+
+            content.innerHTML = `
+                <p><strong>Group:</strong> ${d.group}</p>
+                <p><strong>Connections:</strong> ${connections.length}</p>
+                ${d.file ? `<p><strong>File:</strong> ${d.file}</p>` : '<p><em>No file (referenced only)</em></p>'}
+                ${pinnedNodes.has(d.id) ? '<p><em>📌 Pinned</em></p>' : ''}
+            `;
+
+            connList.innerHTML = '<strong>Connected to:</strong>';
+            connections.sort((a, b) => a.id.localeCompare(b.id)).forEach(c => {
+                const div = document.createElement('div');
+                div.className = 'connection-item';
+                div.textContent = c.id;
+                div.onclick = () => {
+                    selectedNode = c.id;
+                    highlightConnections(c.node);
+                    showInfoPanel(c.node);
+                    focusOnNode(c.node);
+                };
+                connList.appendChild(div);
+            });
+
+            panel.classList.add('visible');
+        }
+
+        function showContextMenu(event, d) {
+            event.preventDefault();
+            const menu = document.getElementById('context-menu');
+
+            menu.innerHTML = `
+                <div class="context-menu-item" onclick="openInObsidian('${d.file || ''}', '${d.id}')">
+                    📂 Open in Obsidian
+                </div>
+                <div class="context-menu-item" onclick="focusOnNodeById('${d.id}')">
+                    🔍 Focus on node
+                </div>
+                <div class="context-menu-item" onclick="togglePinById('${d.id}')">
+                    ${pinnedNodes.has(d.id) ? '📌 Unpin node' : '📍 Pin node'}
+                </div>
+                <div class="context-menu-divider"></div>
+                <div class="context-menu-item" onclick="showOnlyConnected('${d.id}')">
+                    🔗 Show only connections
+                </div>
+                <div class="context-menu-item" onclick="hideNode('${d.id}')">
+                    👁️ Hide this node
+                </div>
+                <div class="context-menu-divider"></div>
+                <div class="context-menu-item" onclick="clearSelection(); hideContextMenu();">
+                    ✖️ Clear selection
+                </div>
+            `;
+
+            menu.style.left = event.pageX + 'px';
+            menu.style.top = event.pageY + 'px';
+            menu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('context-menu').style.display = 'none';
+        }
+
+        function openInObsidian(file, name) {
+            hideContextMenu();
+            if (file) {
+                window.open(`obsidian://open?vault=Aetherion&file=${encodeURIComponent(file)}`, '_blank');
+            } else {
+                alert(`"${name}" is referenced but has no file yet.`);
+            }
+        }
+
+        function focusOnNodeById(id) {
+            hideContextMenu();
+            const d = graphData.nodes.find(n => n.id === id);
+            if (d) focusOnNode(d);
+        }
+
+        function togglePinById(id) {
+            hideContextMenu();
+            const d = graphData.nodes.find(n => n.id === id);
+            if (d) nodeDoubleClicked({ preventDefault: () => {}, stopPropagation: () => {} }, d);
+        }
+
+        function showOnlyConnected(id) {
+            hideContextMenu();
+            const d = graphData.nodes.find(n => n.id === id);
+            if (d) {
+                selectedNode = id;
+                highlightConnections(d);
+                showInfoPanel(d);
+            }
+        }
+
+        function hideNode(id) {
+            hideContextMenu();
+            node.filter(n => n.id === id).style('display', 'none');
+            link.filter(l => l.source.id === id || l.target.id === id).style('display', 'none');
+        }
+
+        function showTooltip(event, d) {
+            if (event.buttons) return; // Don't show during drag
+
+            const tooltip = document.getElementById('tooltip');
+            tooltip.innerHTML = `
+                <h3>${d.id}</h3>
+                <p>Group: ${d.group}</p>
+                <p>Connections: ${d.connectionCount || 0}</p>
+                ${d.file ? `<p>File: ${d.file}</p>` : '<p><em>Referenced but no file</em></p>'}
+                ${pinnedNodes.has(d.id) ? '<p>📌 Pinned</p>' : ''}
+                <p style="color: var(--accent); margin-top: 8px;">Click to highlight • Double-click to focus</p>
+            `;
+            tooltip.style.left = event.pageX + 10 + 'px';
+            tooltip.style.top = event.pageY + 10 + 'px';
+            tooltip.classList.add('visible');
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('visible');
+        }
+
+        function resetView() {
+            clearSelection();
+            node.style('display', null);
+            link.style('display', null);
+            svg.transition().duration(750).call(
+                zoom.transform,
+                d3.zoomIdentity
+            );
+        }
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            const btn = document.getElementById('physics-btn');
+
+            if (physicsEnabled) {
+                simulation.alpha(0.3).restart();
+                btn.textContent = 'Pause Physics';
+                btn.classList.remove('active');
+            } else {
+                simulation.stop();
+                btn.textContent = 'Resume Physics';
+                btn.classList.add('active');
+            }
+        }
+
+        function toggleHelp() {
+            document.getElementById('help-panel').classList.toggle('visible');
+        }
+
+        // Search functionality
+        document.getElementById('search').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+
+            node.style('opacity', d => {
+                if (!query) return 1;
+                return d.id.toLowerCase().includes(query) ? 1 : 0.1;
+            });
+
+            link.style('opacity', d => {
+                if (!query) return 0.6;
+                const sourceMatch = d.source.id.toLowerCase().includes(query);
+                const targetMatch = d.target.id.toLowerCase().includes(query);
+                return (sourceMatch || targetMatch) ? 0.6 : 0.05;
+            });
+        });
+
+        // Group filter
+        document.getElementById('filter-group').addEventListener('change', (e) => {
+            const group = e.target.value;
+            clearSelection();
+
+            if (!group) {
+                node.classed('dimmed', false);
+                link.classed('dimmed', false);
+                return;
+            }
+
+            node.classed('dimmed', d => d.group !== group);
+            link.classed('dimmed', d => d.source.group !== group && d.target.group !== group);
+        });
+
+        // Theme toggle
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+        }
+
+        // Click on background to clear selection
+        document.getElementById('graph').addEventListener('click', (e) => {
+            if (e.target.tagName === 'svg' || e.target.tagName === 'g') {
+                clearSelection();
+                hideContextMenu();
+            }
+        });
+
+        // Hide context menu on scroll/click elsewhere
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.context-menu') && !e.target.closest('.node')) {
+                hideContextMenu();
+            }
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Escape - reset/close
+            if (e.key === 'Escape') {
+                clearSelection();
+                hideContextMenu();
+                document.getElementById('help-panel').classList.remove('visible');
+                document.getElementById('info-panel').classList.remove('visible');
+            }
+
+            // "/" - focus search
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                document.getElementById('search').focus();
+            }
+
+            // Space - toggle physics
+            if (e.key === ' ' && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                togglePhysics();
+            }
+
+            // "?" - toggle help
+            if (e.key === '?' && document.activeElement.tagName !== 'INPUT') {
+                toggleHelp();
+            }
+
+            // "r" - reset view
+            if (e.key === 'r' && document.activeElement.tagName !== 'INPUT') {
+                resetView();
+            }
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            if (graphData.nodes.length > 0) {
+                renderGraph(graphData);
+            }
+        });
+
+        // Make legend items clickable
+        function makeLegendClickable() {
+            const legendItems = document.querySelectorAll('.legend-item');
+            legendItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    const groupName = item.dataset.group || '';
+                    document.getElementById('filter-group').value = groupName;
+                    document.getElementById('filter-group').dispatchEvent(new Event('change'));
+                });
+            });
+        }
+
+        // Initialize
+        loadGraph().then(() => {
+            setTimeout(makeLegendClickable, 100);
+        });
+    </script>
+</body>
+</html>
