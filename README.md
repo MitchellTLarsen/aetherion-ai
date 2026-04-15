@@ -36,19 +36,36 @@ With RAG: "Tell me about Athamos" → AI reads your notes first, then responds a
 git clone https://github.com/yourusername/aetherion-ai.git
 cd aetherion-ai
 
-# Create virtual environment
+# Create and activate a virtual environment
+# macOS / Linux
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
+
+# Windows PowerShell
+py -3.12 -m venv venv
+.\venv\Scripts\Activate.ps1
 
 # Install dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-Create a `.env` file (or copy from `.env.example`):
+### Windows note
+
+If `python` points to an MSYS2/Git Bash Python on Windows, some packages may fail to install cleanly.
+Prefer the official Windows Python launcher:
+
+```powershell
+py -3.12 -m venv venv
+py -3.12 -m pip --python .\venv\Scripts\python.exe install -r requirements.txt
+```
+
+Create a `.env` file:
 
 ```bash
-cp .env.example .env
+cp .env.example .env  # If .env.example exists
 ```
+
+If this repository does not include `.env.example`, create `.env` manually in the project root.
 
 Edit `.env` with your settings:
 
