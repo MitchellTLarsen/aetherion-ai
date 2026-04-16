@@ -293,6 +293,55 @@ Remember: You ARE {character_name}. Do not break character."""
 # RELATIONSHIP GRAPH
 # =============================================================================
 
+def extract_sections_from_file(file_path: Path) -> list[dict]:
+    """
+    Extract markdown sections (headers) from a file.
+    Returns list of dicts with id, title, level, and links within that section.
+    """
+    try:
+        content = file_path.read_text(encoding='utf-8')
+    except Exception:
+        return []
+
+    sections = []
+    lines = content.split('\n')
+    current_section = None
+    current_content = []
+
+    for line in lines:
+        # Check for markdown header
+        header_match = re.match(r'^(#{1,6})\s+(.+)$', line)
+        if header_match:
+            # Save previous section
+            if current_section:
+                section_content = '\n'.join(current_content)
+                current_section['links'] = re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', section_content)
+                sections.append(current_section)
+
+            level = len(header_match.group(1))
+            title = header_match.group(2).strip()
+            # Create URL-safe ID
+            section_id = re.sub(r'[^a-zA-Z0-9\s-]', '', title).strip().replace(' ', '-').lower()
+
+            current_section = {
+                'id': section_id,
+                'title': title,
+                'level': level,
+                'links': []
+            }
+            current_content = []
+        else:
+            current_content.append(line)
+
+    # Don't forget the last section
+    if current_section:
+        section_content = '\n'.join(current_content)
+        current_section['links'] = re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', section_content)
+        sections.append(current_section)
+
+    return sections
+
+
 def extract_links_from_file(file_path: Path) -> list[str]:
     """Extract all [[wiki-links]] from a file."""
     try:
@@ -329,13 +378,17 @@ def build_relationship_graph() -> dict:
         parts = relative_path.split(os.sep)
         group = parts[0] if len(parts) > 1 else "Root"
 
-        # Add source node
+        # Add or update source node (update in case it was added as a reference first)
         if source_name not in nodes:
             nodes[source_name] = {
                 "id": source_name,
                 "group": group,
                 "file": relative_path
             }
+        elif nodes[source_name].get("file") is None:
+            # Node exists but was added as a reference - update with actual file info
+            nodes[source_name]["file"] = relative_path
+            nodes[source_name]["group"] = group
 
         # Extract links
         linked_names = extract_links_from_file(md_file)

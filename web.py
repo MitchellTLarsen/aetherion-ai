@@ -351,6 +351,22 @@ def api_graph():
     return jsonify(graph)
 
 
+@app.route("/api/graph/sections/<path:file_path>")
+def api_graph_sections(file_path):
+    """Get sections within a file for graph drill-down."""
+    from features import extract_sections_from_file
+    full_path = VAULT_PATH / file_path
+
+    if not full_path.exists():
+        return jsonify({"error": "File not found"}), 404
+
+    sections = extract_sections_from_file(full_path)
+    return jsonify({
+        "file": file_path,
+        "sections": sections
+    })
+
+
 @app.route("/graph")
 def graph_view():
     """Relationship graph visualization page."""

@@ -60,9 +60,12 @@
             gap: 12px;
         }
 
-        .header a {
+        .header a,
+        .header a:visited,
+        .header a:hover,
+        .header a:active {
             color: var(--accent);
-            text-decoration: none;
+            text-decoration: none !important;
         }
 
         .controls {
@@ -102,18 +105,15 @@
 
         .node {
             cursor: pointer;
-            transition: opacity 0.2s;
         }
 
         .node circle {
             stroke: var(--border);
-            stroke-width: 2px;
-            transition: stroke-width 0.2s, r 0.2s;
+            stroke-width: 1.5px;
         }
 
         .node:hover circle {
-            stroke-width: 4px;
-            filter: brightness(1.2);
+            stroke-width: 3px;
         }
 
         .node.highlighted circle {
@@ -126,35 +126,38 @@
             stroke-width: 3px;
         }
 
-        .node.dimmed {
-            opacity: 0.15;
-        }
-
         .node text {
-            font-size: 11px;
+            font-size: 9px;
             fill: var(--text-primary);
             pointer-events: none;
-            transition: font-size 0.2s;
         }
 
         .node.highlighted text {
-            font-size: 14px;
+            font-size: 11px;
             font-weight: bold;
+        }
+
+        .node.dimmed {
+            opacity: 0.08;
+        }
+
+        .node.connected {
+            opacity: 0.9;
         }
 
         .link {
             stroke: var(--border);
-            stroke-opacity: 0.6;
-            transition: stroke-opacity 0.2s, stroke-width 0.2s;
+            stroke-opacity: 0.3;
         }
 
         .link.highlighted {
             stroke: var(--accent);
             stroke-opacity: 1;
+            stroke-width: 2px;
         }
 
         .link.dimmed {
-            stroke-opacity: 0.05;
+            stroke-opacity: 0.03;
         }
 
         .tooltip {
@@ -353,9 +356,16 @@
             <select id="filter-group">
                 <option value="">All Groups</option>
             </select>
+            <select id="connection-depth" title="Connection depth">
+                <option value="1">+1 (direct)</option>
+                <option value="2">+2</option>
+                <option value="3">+3</option>
+                <option value="4">+4</option>
+                <option value="5">+5</option>
+            </select>
             <button onclick="resetView()">Reset View</button>
             <button onclick="togglePhysics()" id="physics-btn">Pause Physics</button>
-            <button onclick="toggleHelp()">Help (?)</button>
+                        <button onclick="toggleHelp()">Help (?)</button>
             <button onclick="toggleTheme()">Theme</button>
         </div>
     </div>
@@ -384,11 +394,17 @@
         <div class="help-row"><span>Close panels</span><kbd>Esc</kbd></div>
         <h4 style="margin-top: 12px;">Mouse Actions</h4>
         <div class="help-row"><span>Click</span>Highlight connections</div>
-        <div class="help-row"><span>Double-click</span>Focus & pin node</div>
+        <div class="help-row"><span>Double-click</span>Drill into sections</div>
         <div class="help-row"><span>Right-click</span>Context menu</div>
         <div class="help-row"><span>Drag</span>Move node</div>
         <div class="help-row"><span>Scroll</span>Zoom in/out</div>
         <div class="help-row"><span>Drag canvas</span>Pan view</div>
+        <h4 style="margin-top: 12px;">Connection Depth</h4>
+        <div class="help-row"><span>+1</span>Direct connections only</div>
+        <div class="help-row"><span>+2, +3...</span>Show 2nd, 3rd degree etc</div>
+        <h4 style="margin-top: 12px;">Drill-Down</h4>
+        <div class="help-row"><span>Double-click file</span>View sections</div>
+        <div class="help-row"><kbd>Esc</kbd><span>Exit drill-down</span></div>
     </div>
 
     <script>
@@ -397,14 +413,29 @@
 
         let simulation, svg, g, link, node, zoom;
         let graphData = { nodes: [], links: [] };
+        let originalGraphData = null;  // Store original for returning from drill-down
         let selectedNode = null;
         let pinnedNodes = new Set();
         let physicsEnabled = true;
+        let drilledNode = null;  // Track which node we're drilled into
 
         // Load and render graph
         async function loadGraph() {
             const response = await fetch('/api/graph');
-            graphData = await response.json();
+            const rawData = await response.json();
+
+            // Filter to only show nodes that have files (not just referenced entities)
+            const fileNodes = rawData.nodes.filter(n => n.file);
+            const fileNodeIds = new Set(fileNodes.map(n => n.id));
+
+            // Filter links to only include connections between file nodes
+            const fileLinks = rawData.links.filter(l => {
+                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                return fileNodeIds.has(sourceId) && fileNodeIds.has(targetId);
+            });
+
+            graphData = { nodes: fileNodes, links: fileLinks };
 
             // Update stats
             document.getElementById('stats').innerHTML = `
@@ -466,21 +497,22 @@
 
             g = svg.append('g');
 
-            // Create simulation
+            // Create optimized simulation
             simulation = d3.forceSimulation(data.nodes)
-                .force('link', d3.forceLink(data.links).id(d => d.id).distance(100))
-                .force('charge', d3.forceManyBody().strength(-200))
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(80).strength(0.5))
+                .force('charge', d3.forceManyBody().strength(-150).distanceMax(300))
                 .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(30));
+                .alphaDecay(0.05)  // Faster cooldown
+                .velocityDecay(0.4);  // More damping
 
-            // Draw links
+            // Draw links (simplified)
             link = g.append('g')
                 .attr('class', 'links')
                 .selectAll('line')
                 .data(data.links)
                 .enter().append('line')
                 .attr('class', 'link')
-                .attr('stroke-width', d => Math.sqrt(d.value));
+                .attr('stroke-width', 1);
 
             // Calculate connection counts for node sizing
             const connectionCounts = {};
@@ -505,37 +537,61 @@
                 .on('click', nodeClicked)
                 .on('dblclick', nodeDoubleClicked)
                 .on('contextmenu', showContextMenu)
-                .on('mouseover', showTooltip)
-                .on('mouseout', hideTooltip);
+                .on('mouseover', function(event, d) {
+                    showTooltip(event, d);
+                    // Show label on hover if hidden
+                    d3.select(this).select('text').style('display', null);
+                })
+                .on('mouseout', function(event, d) {
+                    hideTooltip();
+                    // Hide label again if it was hidden
+                    if (d.connectionCount < 3 && !d.isCenter && !d.isSection) {
+                        d3.select(this).select('text').style('display', 'none');
+                    }
+                });
 
             node.append('circle')
                 .attr('r', d => {
+                    if (d.isCenter) return 20;  // Center node when drilled
+                    if (d.isSection) return 6 + (6 - d.level);  // Sections sized by heading level
+                    if (d.isLinked) return 8;  // Linked entities
                     const baseSize = d.file ? 8 : 5;
                     const connections = connectionCounts[d.id] || 0;
                     return Math.min(baseSize + connections * 0.5, 20);
                 })
-                .attr('fill', d => colors(d.group));
+                .attr('fill', d => {
+                    if (d.isCenter) return '#f59e0b';  // Gold for center
+                    if (d.isSection) return '#10b981';  // Green for sections
+                    return colors(d.group);
+                })
+                .attr('stroke-dasharray', d => d.isSection ? '3,2' : null);
 
-            node.append('text')
-                .attr('dx', 12)
-                .attr('dy', 4)
-                .text(d => d.id);
-
-            // Store connection counts on nodes
+            // Store connection counts on nodes first
             data.nodes.forEach(n => {
                 n.connectionCount = connectionCounts[n.id] || 0;
             });
 
-            // Update positions on tick
+            // Only show labels for nodes with 3+ connections (performance)
+            node.append('text')
+                .attr('dx', 12)
+                .attr('dy', 4)
+                .text(d => d.displayName || d.id)
+                .style('display', d => (d.connectionCount >= 3 || d.isCenter || d.isSection) ? null : 'none');
+
+            // Optimized tick - update less frequently
+            let tickCount = 0;
             simulation.on('tick', () => {
+                tickCount++;
+                // Only update DOM every 3rd tick during heavy simulation
+                if (simulation.alpha() > 0.1 && tickCount % 3 !== 0) return;
+
                 link
                     .attr('x1', d => d.source.x)
                     .attr('y1', d => d.source.y)
                     .attr('x2', d => d.target.x)
                     .attr('y2', d => d.target.y);
 
-                node
-                    .attr('transform', d => `translate(${d.x},${d.y})`);
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
             });
         }
 
@@ -578,7 +634,17 @@
             event.preventDefault();
             event.stopPropagation();
 
-            // Toggle pin
+            // If it's a section node (no file), just pin it
+            if (!d.file || d.isSection) {
+                togglePinNode(d);
+                return;
+            }
+
+            // Drill into the file to show sections
+            drillIntoNode(d);
+        }
+
+        function togglePinNode(d) {
             if (pinnedNodes.has(d.id)) {
                 pinnedNodes.delete(d.id);
                 d.fx = null;
@@ -588,32 +654,240 @@
                 d.fx = d.x;
                 d.fy = d.y;
             }
-
-            // Update visual
             node.classed('pinned', n => pinnedNodes.has(n.id));
-
-            // Focus on node
             focusOnNode(d);
         }
 
-        function highlightConnections(d) {
-            const connectedIds = new Set([d.id]);
+        async function drillIntoNode(d) {
+            if (!d.file) return;
 
-            graphData.links.forEach(l => {
-                if (l.source.id === d.id) connectedIds.add(l.target.id);
-                if (l.target.id === d.id) connectedIds.add(l.source.id);
+            // Store original graph for returning (properly serialize links)
+            if (!originalGraphData) {
+                originalGraphData = {
+                    nodes: graphData.nodes.map(n => ({
+                        id: n.id,
+                        group: n.group,
+                        file: n.file
+                    })),
+                    links: graphData.links.map(l => ({
+                        source: typeof l.source === 'object' ? l.source.id : l.source,
+                        target: typeof l.target === 'object' ? l.target.id : l.target,
+                        value: l.value
+                    }))
+                };
+            }
+
+            try {
+                const response = await fetch(`/api/graph/sections/${encodeURIComponent(d.file)}`);
+                const data = await response.json();
+
+                if (data.sections && data.sections.length > 0) {
+                    drilledNode = d;
+                    showSectionsGraph(d, data.sections);
+                    updateDrillDownUI(d.id);
+                } else {
+                    // No sections, just focus on the node
+                    focusOnNode(d);
+                }
+            } catch (e) {
+                console.error('Error drilling into node:', e);
+            }
+        }
+
+        function showSectionsGraph(parentNode, sections) {
+            // Create section nodes centered around parent position
+            const sectionNodes = sections.map((s, i) => ({
+                id: `${parentNode.id}#${s.id}`,
+                displayName: s.title,
+                group: parentNode.group,
+                file: parentNode.file,
+                isSection: true,
+                level: s.level,
+                parentId: parentNode.id,
+                links: s.links
+            }));
+
+            // Add parent node in center
+            const centerNode = {
+                ...parentNode,
+                isCenter: true
+            };
+
+            // Create links from parent to sections
+            const sectionLinks = sectionNodes.map(s => ({
+                source: parentNode.id,
+                target: s.id,
+                value: 1
+            }));
+
+            // Create links between sections and their referenced entities
+            const entityLinks = [];
+            sectionNodes.forEach(section => {
+                section.links.forEach(linkedEntity => {
+                    // Only link to entities that exist in the original graph
+                    const exists = originalGraphData.nodes.find(n => n.id === linkedEntity);
+                    if (exists) {
+                        entityLinks.push({
+                            source: section.id,
+                            target: linkedEntity,
+                            value: 1
+                        });
+                        // Add the linked entity node if not already present
+                        if (!sectionNodes.find(n => n.id === linkedEntity)) {
+                            sectionNodes.push({
+                                ...exists,
+                                isLinked: true
+                            });
+                        }
+                    }
+                });
             });
 
-            node.classed('highlighted', n => n.id === d.id);
-            node.classed('dimmed', n => !connectedIds.has(n.id));
+            // Build the drilled graph
+            graphData = {
+                nodes: [centerNode, ...sectionNodes],
+                links: [...sectionLinks, ...entityLinks]
+            };
 
-            link.classed('highlighted', l => l.source.id === d.id || l.target.id === d.id);
-            link.classed('dimmed', l => l.source.id !== d.id && l.target.id !== d.id);
+            renderGraph(graphData);
+
+            // Focus on center after a short delay
+            setTimeout(() => {
+                const center = graphData.nodes.find(n => n.isCenter);
+                if (center) focusOnNode(center);
+            }, 500);
+        }
+
+        function updateDrillDownUI(nodeName) {
+            // Show breadcrumb/back button
+            let breadcrumb = document.getElementById('drill-breadcrumb');
+            if (!breadcrumb) {
+                breadcrumb = document.createElement('div');
+                breadcrumb.id = 'drill-breadcrumb';
+                breadcrumb.style.cssText = `
+                    position: fixed;
+                    top: 80px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border);
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    z-index: 150;
+                `;
+                document.body.appendChild(breadcrumb);
+            }
+
+            breadcrumb.innerHTML = `
+                <span style="color: var(--text-secondary);">Viewing sections of</span>
+                <strong style="color: var(--accent);">${nodeName}</strong>
+                <button onclick="exitDrillDown()" style="
+                    background: var(--accent);
+                    color: white;
+                    border: none;
+                    padding: 4px 12px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    margin-left: 8px;
+                ">Back to Full Graph</button>
+            `;
+            breadcrumb.style.display = 'flex';
+        }
+
+        function exitDrillDown() {
+            if (originalGraphData) {
+                graphData = originalGraphData;
+                originalGraphData = null;
+                drilledNode = null;
+                adjacencyList = null;  // Reset adjacency cache
+                nodeMap = null;  // Reset node map cache
+
+                // Rebuild connection counts for node sizing
+                const connectionCounts = {};
+                graphData.links.forEach(l => {
+                    const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                    const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                    connectionCounts[sourceId] = (connectionCounts[sourceId] || 0) + 1;
+                    connectionCounts[targetId] = (connectionCounts[targetId] || 0) + 1;
+                });
+                graphData.nodes.forEach(n => {
+                    n.connectionCount = connectionCounts[n.id] || 0;
+                });
+
+                renderGraph(graphData);
+
+                // Hide breadcrumb
+                const breadcrumb = document.getElementById('drill-breadcrumb');
+                if (breadcrumb) breadcrumb.style.display = 'none';
+
+                // Reset view
+                setTimeout(resetView, 100);
+            }
+        }
+
+        // Pre-compute adjacency list for faster traversal
+        let adjacencyList = null;
+        function buildAdjacencyList() {
+            if (adjacencyList && adjacencyList.graphData === graphData) return adjacencyList.map;
+            const map = new Map();
+            graphData.links.forEach(l => {
+                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                if (!map.has(sourceId)) map.set(sourceId, []);
+                if (!map.has(targetId)) map.set(targetId, []);
+                map.get(sourceId).push(targetId);
+                map.get(targetId).push(sourceId);
+            });
+            adjacencyList = { graphData, map };
+            return map;
+        }
+
+        function highlightConnections(d) {
+            const depth = parseInt(document.getElementById('connection-depth').value) || 1;
+            const adj = buildAdjacencyList();
+
+            // Fast BFS using adjacency list
+            const connectedNodes = new Set([d.id]);
+            let currentLevel = [d.id];
+
+            for (let level = 1; level <= depth; level++) {
+                const nextLevel = [];
+                for (const nodeId of currentLevel) {
+                    const neighbors = adj.get(nodeId) || [];
+                    for (const neighborId of neighbors) {
+                        if (!connectedNodes.has(neighborId)) {
+                            connectedNodes.add(neighborId);
+                            nextLevel.push(neighborId);
+                        }
+                    }
+                }
+                currentLevel = nextLevel;
+            }
+
+            // Use classes instead of inline styles for better performance
+            node.classed('highlighted', n => n.id === d.id)
+                .classed('connected', n => connectedNodes.has(n.id) && n.id !== d.id)
+                .classed('dimmed', n => !connectedNodes.has(n.id))
+                .select('text').style('display', n => connectedNodes.has(n.id) ? null : 'none');
+
+            link.classed('highlighted', l => {
+                const sid = l.source.id || l.source;
+                const tid = l.target.id || l.target;
+                return sid === d.id || tid === d.id;
+            }).classed('dimmed', l => {
+                const sid = l.source.id || l.source;
+                const tid = l.target.id || l.target;
+                return !connectedNodes.has(sid) || !connectedNodes.has(tid);
+            });
         }
 
         function clearSelection() {
             selectedNode = null;
-            node.classed('highlighted', false).classed('dimmed', false);
+            node.classed('highlighted', false).classed('connected', false).classed('dimmed', false)
+                .select('text').style('display', d => (d.connectionCount >= 3 || d.isCenter || d.isSection) ? null : 'none');
             link.classed('highlighted', false).classed('dimmed', false);
             document.getElementById('info-panel').classList.remove('visible');
         }
@@ -629,40 +903,86 @@
             );
         }
 
+        // Node lookup map for fast access
+        let nodeMap = null;
+        function getNodeMap() {
+            if (nodeMap && nodeMap.graphData === graphData) return nodeMap.map;
+            const map = new Map();
+            graphData.nodes.forEach(n => map.set(n.id, n));
+            nodeMap = { graphData, map };
+            return map;
+        }
+
         function showInfoPanel(d) {
             const panel = document.getElementById('info-panel');
             const title = document.getElementById('info-title');
             const content = document.getElementById('info-content');
             const connList = document.getElementById('connections-list');
+            const depth = parseInt(document.getElementById('connection-depth').value) || 1;
 
-            title.textContent = d.id;
+            title.textContent = d.displayName || d.id;
 
-            const connections = [];
-            graphData.links.forEach(l => {
-                if (l.source.id === d.id) connections.push({ id: l.target.id, node: l.target });
-                if (l.target.id === d.id) connections.push({ id: l.source.id, node: l.source });
-            });
+            // Use adjacency list and node map for fast lookups
+            const adj = buildAdjacencyList();
+            const nodes = getNodeMap();
+
+            const connectionsByLevel = {};
+            const visited = new Set([d.id]);
+            let currentLevel = [d.id];
+
+            for (let level = 1; level <= depth; level++) {
+                connectionsByLevel[level] = [];
+                const nextLevel = [];
+
+                for (const nodeId of currentLevel) {
+                    const neighbors = adj.get(nodeId) || [];
+                    for (const neighborId of neighbors) {
+                        if (!visited.has(neighborId)) {
+                            visited.add(neighborId);
+                            nextLevel.push(neighborId);
+                            connectionsByLevel[level].push({ id: neighborId, node: nodes.get(neighborId) });
+                        }
+                    }
+                }
+                currentLevel = nextLevel;
+            }
+
+            const totalConnections = Object.values(connectionsByLevel).flat().length;
 
             content.innerHTML = `
                 <p><strong>Group:</strong> ${d.group}</p>
-                <p><strong>Connections:</strong> ${connections.length}</p>
+                <p><strong>Connections:</strong> ${totalConnections} (depth ${depth})</p>
                 ${d.file ? `<p><strong>File:</strong> ${d.file}</p>` : '<p><em>No file (referenced only)</em></p>'}
                 ${pinnedNodes.has(d.id) ? '<p><em>📌 Pinned</em></p>' : ''}
             `;
 
-            connList.innerHTML = '<strong>Connected to:</strong>';
-            connections.sort((a, b) => a.id.localeCompare(b.id)).forEach(c => {
-                const div = document.createElement('div');
-                div.className = 'connection-item';
-                div.textContent = c.id;
-                div.onclick = () => {
-                    selectedNode = c.id;
-                    highlightConnections(c.node);
-                    showInfoPanel(c.node);
-                    focusOnNode(c.node);
-                };
-                connList.appendChild(div);
-            });
+            connList.innerHTML = '';
+
+            for (let level = 1; level <= depth; level++) {
+                const conns = connectionsByLevel[level];
+                if (conns.length === 0) continue;
+
+                const header = document.createElement('div');
+                header.innerHTML = `<strong style="color: var(--accent);">+${level} (${conns.length}):</strong>`;
+                header.style.marginTop = level > 1 ? '8px' : '0';
+                connList.appendChild(header);
+
+                conns.sort((a, b) => a.id.localeCompare(b.id)).forEach(c => {
+                    const div = document.createElement('div');
+                    div.className = 'connection-item';
+                    div.textContent = c.id;
+                    div.style.opacity = 1 - (level - 1) * 0.2;
+                    div.onclick = () => {
+                        if (c.node) {
+                            selectedNode = c.id;
+                            highlightConnections(c.node);
+                            showInfoPanel(c.node);
+                            focusOnNode(c.node);
+                        }
+                    };
+                    connList.appendChild(div);
+                });
+            }
 
             panel.classList.add('visible');
         }
@@ -671,10 +991,26 @@
             event.preventDefault();
             const menu = document.getElementById('context-menu');
 
-            menu.innerHTML = `
-                <div class="context-menu-item" onclick="openInObsidian('${d.file || ''}', '${d.id}')">
+            let menuItems = '';
+
+            // Open in Obsidian (with section anchor if applicable)
+            const obsidianPath = d.isSection ? `${d.file}#${d.id.split('#')[1]}` : (d.file || '');
+            menuItems += `
+                <div class="context-menu-item" onclick="openInObsidian('${obsidianPath}', '${d.displayName || d.id}')">
                     📂 Open in Obsidian
                 </div>
+            `;
+
+            // Drill down option for file nodes (not in drill mode or for linked entities)
+            if (d.file && !d.isSection && !d.isCenter && !drilledNode) {
+                menuItems += `
+                    <div class="context-menu-item" onclick="drillIntoNodeById('${d.id}')">
+                        🔎 View sections
+                    </div>
+                `;
+            }
+
+            menuItems += `
                 <div class="context-menu-item" onclick="focusOnNodeById('${d.id}')">
                     🔍 Focus on node
                 </div>
@@ -688,15 +1024,35 @@
                 <div class="context-menu-item" onclick="hideNode('${d.id}')">
                     👁️ Hide this node
                 </div>
+            `;
+
+            // Back to full graph option when drilled
+            if (drilledNode) {
+                menuItems += `
+                    <div class="context-menu-divider"></div>
+                    <div class="context-menu-item" onclick="exitDrillDown(); hideContextMenu();">
+                        ⬅️ Back to full graph
+                    </div>
+                `;
+            }
+
+            menuItems += `
                 <div class="context-menu-divider"></div>
                 <div class="context-menu-item" onclick="clearSelection(); hideContextMenu();">
                     ✖️ Clear selection
                 </div>
             `;
 
+            menu.innerHTML = menuItems;
             menu.style.left = event.pageX + 'px';
             menu.style.top = event.pageY + 'px';
             menu.style.display = 'block';
+        }
+
+        function drillIntoNodeById(id) {
+            hideContextMenu();
+            const d = graphData.nodes.find(n => n.id === id);
+            if (d && d.file) drillIntoNode(d);
         }
 
         function hideContextMenu() {
@@ -744,14 +1100,36 @@
             if (event.buttons) return; // Don't show during drag
 
             const tooltip = document.getElementById('tooltip');
-            tooltip.innerHTML = `
-                <h3>${d.id}</h3>
-                <p>Group: ${d.group}</p>
-                <p>Connections: ${d.connectionCount || 0}</p>
-                ${d.file ? `<p>File: ${d.file}</p>` : '<p><em>Referenced but no file</em></p>'}
-                ${pinnedNodes.has(d.id) ? '<p>📌 Pinned</p>' : ''}
-                <p style="color: var(--accent); margin-top: 8px;">Click to highlight • Double-click to focus</p>
-            `;
+            let content = `<h3>${d.displayName || d.id}</h3>`;
+
+            if (d.isSection) {
+                content += `
+                    <p>Section (H${d.level})</p>
+                    <p>In: ${d.parentId}</p>
+                    ${d.links && d.links.length > 0 ? `<p>Links to: ${d.links.length} entities</p>` : ''}
+                `;
+            } else if (d.isCenter) {
+                content += `
+                    <p style="color: #f59e0b;">📄 Currently viewing sections</p>
+                    <p>File: ${d.file}</p>
+                `;
+            } else {
+                content += `
+                    <p>Group: ${d.group}</p>
+                    <p>Connections: ${d.connectionCount || 0}</p>
+                    ${d.file ? `<p>File: ${d.file}</p>` : '<p><em>Referenced but no file</em></p>'}
+                `;
+            }
+
+            content += pinnedNodes.has(d.id) ? '<p>📌 Pinned</p>' : '';
+
+            if (d.file && !d.isSection && !drilledNode) {
+                content += `<p style="color: var(--accent); margin-top: 8px;">Double-click to view sections</p>`;
+            } else {
+                content += `<p style="color: var(--accent); margin-top: 8px;">Click to highlight</p>`;
+            }
+
+            tooltip.innerHTML = content;
             tooltip.style.left = event.pageX + 10 + 'px';
             tooltip.style.top = event.pageY + 10 + 'px';
             tooltip.classList.add('visible');
@@ -790,21 +1168,43 @@
             document.getElementById('help-panel').classList.toggle('visible');
         }
 
-        // Search functionality
-        document.getElementById('search').addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
 
+        // Debounce helper
+        function debounce(fn, ms) {
+            let timer;
+            return (...args) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), ms);
+            };
+        }
+
+        // Search functionality (debounced)
+        const doSearch = debounce((query) => {
             node.style('opacity', d => {
                 if (!query) return 1;
-                return d.id.toLowerCase().includes(query) ? 1 : 0.1;
+                return (d.displayName || d.id).toLowerCase().includes(query) ? 1 : 0.1;
             });
-
             link.style('opacity', d => {
-                if (!query) return 0.6;
-                const sourceMatch = d.source.id.toLowerCase().includes(query);
-                const targetMatch = d.target.id.toLowerCase().includes(query);
-                return (sourceMatch || targetMatch) ? 0.6 : 0.05;
+                if (!query) return 0.4;
+                const sid = (d.source.displayName || d.source.id || '').toLowerCase();
+                const tid = (d.target.displayName || d.target.id || '').toLowerCase();
+                return (sid.includes(query) || tid.includes(query)) ? 0.4 : 0.03;
             });
+        }, 150);
+
+        document.getElementById('search').addEventListener('input', (e) => {
+            doSearch(e.target.value.toLowerCase());
+        });
+
+        // Connection depth - re-highlight when changed
+        document.getElementById('connection-depth').addEventListener('change', () => {
+            if (selectedNode) {
+                const d = graphData.nodes.find(n => n.id === selectedNode);
+                if (d) {
+                    highlightConnections(d);
+                    showInfoPanel(d);
+                }
+            }
         });
 
         // Group filter
@@ -845,12 +1245,16 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Escape - reset/close
+            // Escape - reset/close or exit drill-down
             if (e.key === 'Escape') {
-                clearSelection();
-                hideContextMenu();
-                document.getElementById('help-panel').classList.remove('visible');
-                document.getElementById('info-panel').classList.remove('visible');
+                if (drilledNode) {
+                    exitDrillDown();
+                } else {
+                    clearSelection();
+                    hideContextMenu();
+                    document.getElementById('help-panel').classList.remove('visible');
+                    document.getElementById('info-panel').classList.remove('visible');
+                }
             }
 
             // "/" - focus search
@@ -874,6 +1278,7 @@
             if (e.key === 'r' && document.activeElement.tagName !== 'INPUT') {
                 resetView();
             }
+
         });
 
         // Window resize
