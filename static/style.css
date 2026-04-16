@@ -1,71 +1,76 @@
 /* Aetherion AI - Theme CSS */
+/* Inspired by LegendKeeper */
 
-/* Dark Theme (default) */
+/* Dark Theme (default) - LegendKeeper style */
 :root {
-    --bg-primary: #1a1a2e;
-    --bg-secondary: #16213e;
-    --bg-tertiary: #0f0f1a;
-    --bg-hover: #252542;
-    --bg-input: #1e1e3a;
+    --bg-primary: #13141a;
+    --bg-secondary: #1a1b23;
+    --bg-tertiary: #0d0e12;
+    --bg-hover: #242530;
+    --bg-input: #1e1f28;
+    --bg-card: #1e1f28;
 
-    --text-primary: #e4e4e7;
-    --text-secondary: #a1a1aa;
-    --text-muted: #71717a;
+    --text-primary: #e8e6e3;
+    --text-secondary: #9d9a95;
+    --text-muted: #6b6965;
 
-    --accent-primary: #6366f1;
-    --accent-secondary: #8b5cf6;
-    --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+    --accent-primary: #c9a227;
+    --accent-secondary: #d4a373;
+    --accent-gradient: linear-gradient(135deg, #c9a227, #d4a373);
+    --accent-glow: rgba(201, 162, 39, 0.15);
 
-    --border-color: #27273a;
-    --border-light: #3f3f5a;
+    --border-color: #2a2b35;
+    --border-light: #363740;
 
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --error: #ef4444;
+    --success: #4ade80;
+    --warning: #fbbf24;
+    --error: #f87171;
 
     --sidebar-width: 260px;
     --sources-width: 320px;
 
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 16px;
-    --radius-xl: 24px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 20px;
 
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
 
-    --code-bg: #0f0f1a;
+    --code-bg: #0d0e12;
 }
 
-/* Light Theme */
+/* Light Theme - Parchment style */
 [data-theme="light"] {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --bg-tertiary: #f1f3f4;
-    --bg-hover: #e8eaed;
+    --bg-primary: #faf8f5;
+    --bg-secondary: #f5f2ed;
+    --bg-tertiary: #ebe7e0;
+    --bg-hover: #e8e4dc;
     --bg-input: #ffffff;
+    --bg-card: #ffffff;
 
-    --text-primary: #202124;
-    --text-secondary: #5f6368;
-    --text-muted: #80868b;
+    --text-primary: #2d2a26;
+    --text-secondary: #5c5955;
+    --text-muted: #8a8680;
 
-    --accent-primary: #4f46e5;
-    --accent-secondary: #7c3aed;
-    --accent-gradient: linear-gradient(135deg, #4f46e5, #7c3aed, #9333ea);
+    --accent-primary: #8b6914;
+    --accent-secondary: #a67c00;
+    --accent-gradient: linear-gradient(135deg, #8b6914, #a67c00);
+    --accent-glow: rgba(139, 105, 20, 0.1);
 
-    --border-color: #e0e0e0;
-    --border-light: #dadce0;
+    --border-color: #e0dcd4;
+    --border-light: #d4d0c8;
 
     --success: #16a34a;
     --warning: #d97706;
     --error: #dc2626;
 
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
 
-    --code-bg: #f1f3f4;
+    --code-bg: #f0ece4;
 }
 
 * {
@@ -818,6 +823,76 @@ body {
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-size: 14px;
+}
+
+/* Settings Sections */
+.settings-section {
+    margin-bottom: 24px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-section:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.settings-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--accent-primary);
+    margin-bottom: 16px;
+}
+
+.settings-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+/* Module Toggles */
+.module-toggle label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    cursor: pointer;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.module-toggle label:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-hover);
+}
+
+.module-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    accent-color: var(--accent-primary);
+}
+
+.module-toggle .module-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.module-toggle .module-info strong {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+
+.module-toggle .module-info span {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
 }
 
 /* Confirm Panel */

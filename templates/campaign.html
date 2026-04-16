@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Manager - Aetherion</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #13141a;
+            --bg-secondary: #1a1b23;
+            --bg-card: #1e1f28;
+            --text-primary: #e8e6e3;
+            --text-secondary: #9d9a95;
+            --accent: #c9a227;
+            --accent-hover: #d4a373;
+            --border: #2a2b35;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #faf8f5;
+            --bg-secondary: #f5f2ed;
+            --bg-card: #ffffff;
+            --text-primary: #2d2a26;
+            --text-secondary: #5c5955;
+            --border: #e0dcd4;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 { font-size: 1.25rem; display: flex; align-items: center; gap: 12px; }
+        .header a { color: var(--accent); text-decoration: none; }
+
+        .header-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+        .header-actions button, .header-actions a {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        .header-actions button:hover, .header-actions a:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .container { max-width: 1600px; margin: 0 auto; padding: 24px; }
+
+        .tab-groups { margin-bottom: 16px; }
+        .tab-group-label { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .tab {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .tab:hover { background: var(--bg-card); }
+        .tab.active { background: var(--accent); border-color: var(--accent); color: #000; }
+
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .card h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .stat-value { font-size: 2rem; font-weight: bold; }
+        .stat-label { color: var(--text-secondary); font-size: 0.85rem; }
+
+        .list-item {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        .list-item:hover { background: var(--border); }
+        .list-item-title { font-weight: 500; margin-bottom: 4px; }
+        .list-item-meta { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-active, .badge-true { background: #10b98133; color: #34d399; }
+        .badge-completed { background: #64748b33; color: #94a3b8; }
+        .badge-failed, .badge-false { background: #ef444433; color: #f87171; }
+        .badge-paused, .badge-unknown { background: #f59e0b33; color: #fbbf24; }
+        .badge-high { background: #ef444433; color: #f87171; }
+        .badge-normal { background: #3b82f633; color: #60a5fa; }
+        .badge-low { background: #64748b33; color: #94a3b8; }
+        .badge-friendly { background: #10b98133; color: #34d399; }
+        .badge-hostile { background: #ef444433; color: #f87171; }
+        .badge-neutral { background: #64748b33; color: #94a3b8; }
+        .badge-warning { background: #f59e0b33; color: #fbbf24; }
+        .badge-pc { background: #3b82f633; color: #60a5fa; }
+        .badge-npc { background: #8b5cf633; color: #a78bfa; }
+
+        .btn {
+            background: var(--accent);
+            border: none;
+            color: #000;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn-secondary { background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--bg-card); }
+        .btn-danger { background: var(--danger); }
+        .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
+
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 4px; font-size: 0.85rem; color: var(--text-secondary); }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        .form-row { display: flex; gap: 12px; }
+        .form-row .form-group { flex: 1; }
+
+        .output-area {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 150px;
+            margin-top: 12px;
+            line-height: 1.6;
+        }
+        .output-area h1, .output-area h2, .output-area h3 { color: var(--accent); margin: 12px 0 6px 0; }
+        .output-area table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .output-area th, .output-area td { border: 1px solid var(--border); padding: 8px; text-align: left; }
+        .output-area th { background: var(--bg-card); }
+
+        .loading { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+        .loading::before {
+            content: '';
+            width: 16px; height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state { text-align: center; padding: 30px; color: var(--text-secondary); }
+
+        /* Initiative Tracker */
+        .initiative-list { }
+        .init-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 6px;
+            border-left: 4px solid transparent;
+        }
+        .init-item.current { border-left-color: var(--accent); background: var(--bg-card); }
+        .init-item.dead { opacity: 0.5; }
+        .init-number { font-weight: bold; font-size: 1.1rem; min-width: 30px; text-align: center; }
+        .init-name { flex: 1; font-weight: 500; }
+        .init-hp { display: flex; align-items: center; gap: 6px; }
+        .hp-bar { width: 80px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+        .hp-fill { height: 100%; background: var(--success); }
+        .hp-fill.low { background: var(--warning); }
+        .hp-fill.critical { background: var(--danger); }
+        .init-actions { display: flex; gap: 4px; }
+
+        /* Timer */
+        .timer-display {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            color: var(--accent);
+        }
+        .timer-display.urgent { color: var(--danger); animation: pulse 1s infinite; }
+        @keyframes pulse { 50% { opacity: 0.5; } }
+
+        /* Death Saves */
+        .death-saves { display: flex; gap: 8px; align-items: center; }
+        .save-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--border); }
+        .save-dot.success { background: var(--success); }
+        .save-dot.failure { background: var(--danger); }
+
+        /* Resources */
+        .spell-slots { display: flex; gap: 4px; flex-wrap: wrap; }
+        .slot { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+        .slot.used { background: var(--border); }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.show { display: flex; }
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer; }
+
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .gap-sm { gap: 8px; }
+        .mt-sm { margin-top: 8px; }
+        .mt-md { margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><a href="/">Aetherion</a> / Campaign Manager</h1>
+        <div class="header-actions">
+            <a href="/worldbuilding">Worldbuilding</a>
+            <a href="/graph">Graph</a>
+            <a href="/">Chat</a>
+            <button onclick="toggleTheme()">Theme</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Tab Groups -->
+        <div class="tab-groups">
+            <div class="tab-group-label">Session Management</div>
+            <div class="tabs">
+                <button class="tab active" data-tab="sessions">Sessions</button>
+                <button class="tab" data-tab="quests">Quests</button>
+                <button class="tab" data-tab="party">Party</button>
+                <button class="tab" data-tab="progression">Progression</button>
+                <button class="tab" data-tab="calendar">Calendar</button>
+            </div>
+            <div class="tab-group-label">Combat & Tracking</div>
+            <div class="tabs">
+                <button class="tab" data-tab="initiative">Initiative</button>
+                <button class="tab" data-tab="resources">Resources</button>
+                <button class="tab" data-tab="npcs">NPCs</button>
+            </div>
+            <div class="tab-group-label">Information</div>
+            <div class="tabs">
+                <button class="tab" data-tab="rumors">Rumors</button>
+                <button class="tab" data-tab="secrets">Secrets</button>
+                <button class="tab" data-tab="handouts">Handouts</button>
+                <button class="tab" data-tab="downtime">Downtime</button>
+            </div>
+            <div class="tab-group-label">Generators</div>
+            <div class="tabs">
+                <button class="tab" data-tab="prep">Session Prep</button>
+                <button class="tab" data-tab="encounter">Encounters</button>
+                <button class="tab" data-tab="loot">Loot</button>
+                <button class="tab" data-tab="weather">Weather</button>
+                <button class="tab" data-tab="shop">Shops</button>
+                <button class="tab" data-tab="tables">Tables</button>
+                <button class="tab" data-tab="names">Names</button>
+            </div>
+        </div>
+
+        <!-- Sessions Panel -->
+        <div class="panel active" id="sessions-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Session Log <button class="btn btn-sm" onclick="showModal('session-modal')">+ New</button></h3>
+                    <div id="sessions-list"><div class="loading">Loading...</div></div>
+                </div>
+                <div class="card">
+                    <h3>"Previously On..." Generator</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Sessions</label>
+                            <select id="previously-count">
+                                <option value="1">Last 1</option>
+                                <option value="2">Last 2</option>
+                                <option value="3" selected>Last 3</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn" onclick="generatePreviouslyOn()">Generate</button>
+                        </div>
+                    </div>
+                    <div id="previously-output" class="output-area" style="display: none;"></div>
+                    <h3 class="mt-md">Player-Friendly Recap</h3>
+                    <div class="form-group">
+                        <label>Session Notes (paste or type)</label>
+                        <textarea id="player-recap-notes" rows="4" placeholder="Paste session notes here..."></textarea>
+                    </div>
+                    <button class="btn" onclick="generatePlayerRecap()">Generate Shareable Recap</button>
+                    <div id="player-recap-output" class="output-area" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quests Panel -->
+        <div class="panel" id="quests-panel">
+            <div class="card">
+                <h3>Quest Tracker <button class="btn btn-sm" onclick="showModal('quest-modal')">+ New</button></h3>
+                <div class="tabs" style="margin-bottom: 12px;">
+                    <button class="tab active quest-filter" data-status="all">All</button>
+                    <button class="tab quest-filter" data-status="active">Active</button>
+                    <button class="tab quest-filter" data-status="completed">Completed</button>
+                    <button class="tab quest-filter" data-status="failed">Failed</button>
+                </div>
+                <div id="quests-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Party Panel -->
+        <div class="panel" id="party-panel">
+            <div class="card">
+                <h3>Party Roster <button class="btn btn-sm btn-secondary" onclick="fullRest()">Full Rest</button></h3>
+                <div id="party-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Progression Panel -->
+        <div class="panel" id="progression-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Party Level & XP</h3>
+                    <div id="progression-display"><div class="loading">Loading...</div></div>
+                    <div class="form-row mt-md">
+                        <div class="form-group">
+                            <label>Add XP</label>
+                            <input type="number" id="add-xp-amount" placeholder="Amount">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn" onclick="addXP()">Add XP</button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Set Level</label>
+                            <input type="number" id="set-level" min="1" max="20" value="1">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: flex-end;">
+                            <button class="btn btn-secondary" onclick="setLevel()">Set Level</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Milestones <button class="btn btn-sm" onclick="showModal('milestone-modal')">+ Add</button></h3>
+                    <div id="milestones-list"><div class="empty-state">No milestones yet</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Panel -->
+        <div class="panel" id="calendar-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Campaign Calendar</h3>
+                    <div id="tracked-calendar"><div class="loading">Loading...</div></div>
+                    <div class="mt-md" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-sm" onclick="advanceCalendar(1)">+1 Day</button>
+                        <button class="btn btn-sm btn-secondary" onclick="advanceCalendar(7)">+1 Week</button>
+                        <button class="btn btn-sm btn-secondary" onclick="advanceCalendar(30)">+1 Month</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Events from Notes</h3>
+                    <div id="calendar-events"><div class="loading">Loading...</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Initiative Panel -->
+        <div class="panel" id="initiative-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>
+                        Initiative Order
+                        <div>
+                            <button class="btn btn-sm" onclick="startCombat()">Start Combat</button>
+                            <button class="btn btn-sm btn-secondary" onclick="endCombat()">End</button>
+                        </div>
+                    </h3>
+                    <div id="combat-status" style="margin-bottom: 12px;"></div>
+                    <div id="timer-display" style="display: none;"></div>
+                    <div id="initiative-list"><div class="empty-state">No active combat</div></div>
+                    <div class="mt-md">
+                        <button class="btn" onclick="nextTurn()">Next Turn</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h3>Add Combatant</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="combatant-name" placeholder="Name">
+                        </div>
+                        <div class="form-group">
+                            <label>Initiative</label>
+                            <input type="number" id="combatant-init" placeholder="Roll">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>HP</label>
+                            <input type="number" id="combatant-hp" placeholder="HP">
+                        </div>
+                        <div class="form-group">
+                            <label>Type</label>
+                            <select id="combatant-type">
+                                <option value="false">NPC/Monster</option>
+                                <option value="true">PC</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="addCombatant()">Add</button>
+
+                    <h3 class="mt-md">Timer</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="timer-name" placeholder="e.g., Bomb explodes">
+                        </div>
+                        <div class="form-group">
+                            <label>Rounds</label>
+                            <input type="number" id="timer-rounds" value="3">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="startTimer()">Start Timer</button>
+                    <button class="btn btn-secondary" onclick="stopTimer()">Stop</button>
+
+                    <h3 class="mt-md">Combat Log</h3>
+                    <div id="combat-log" style="max-height: 200px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resources Panel -->
+        <div class="panel" id="resources-panel">
+            <div class="card">
+                <h3>Resource Tracker <button class="btn btn-sm btn-secondary" onclick="longRestAll()">Long Rest All</button></h3>
+                <div id="resources-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- NPCs Panel -->
+        <div class="panel" id="npcs-panel">
+            <div class="card">
+                <h3>NPC Encounter History</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.85rem;">
+                    NPCs encountered in sessions, sorted by frequency.
+                </p>
+                <div id="npc-encounters-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Rumors Panel -->
+        <div class="panel" id="rumors-panel">
+            <div class="card">
+                <h3>Rumor Board <button class="btn btn-sm" onclick="showModal('rumor-modal')">+ Add</button></h3>
+                <div id="rumors-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Secrets Panel -->
+        <div class="panel" id="secrets-panel">
+            <div class="card">
+                <h3>Secrets Tracker <button class="btn btn-sm" onclick="showModal('secret-modal')">+ Add</button></h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.85rem;">
+                    Track story secrets and when they're revealed.
+                </p>
+                <div id="secrets-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Handouts Panel -->
+        <div class="panel" id="handouts-panel">
+            <div class="card">
+                <h3>Handout Log <button class="btn btn-sm" onclick="showModal('handout-modal')">+ Add</button></h3>
+                <div id="handouts-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Downtime Panel -->
+        <div class="panel" id="downtime-panel">
+            <div class="card">
+                <h3>Downtime Activities <button class="btn btn-sm" onclick="showModal('downtime-modal')">+ Add</button></h3>
+                <div id="downtime-list"><div class="loading">Loading...</div></div>
+            </div>
+        </div>
+
+        <!-- Session Prep Panel -->
+        <div class="panel" id="prep-panel">
+            <div class="card">
+                <h3>Session Prep Assistant</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 12px; font-size: 0.85rem;">
+                    Generate a comprehensive prep guide based on recent sessions, quests, and party.
+                </p>
+                <button class="btn" onclick="generateSessionPrep()">Generate Prep Guide</button>
+                <div id="prep-output" class="output-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Encounter Panel -->
+        <div class="panel" id="encounter-panel">
+            <div class="card">
+                <h3>Encounter Builder</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Difficulty</label>
+                        <select id="encounter-difficulty">
+                            <option value="easy">Easy</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="hard">Hard</option>
+                            <option value="deadly">Deadly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="encounter-type">
+                            <option value="combat">Combat</option>
+                            <option value="social">Social</option>
+                            <option value="exploration">Exploration</option>
+                            <option value="puzzle">Puzzle</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Setting</label>
+                        <input type="text" id="encounter-setting" placeholder="e.g., Dark forest">
+                    </div>
+                </div>
+                <button class="btn" onclick="generateEncounter()">Generate Encounter</button>
+                <div id="encounter-output" class="output-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Loot Panel -->
+        <div class="panel" id="loot-panel">
+            <div class="card">
+                <h3>Loot Generator</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Party Level</label>
+                        <input type="number" id="loot-level" value="5" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <select id="loot-type">
+                            <option value="combat">Combat Victory</option>
+                            <option value="treasure">Treasure Hoard</option>
+                            <option value="quest">Quest Reward</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Setting</label>
+                        <input type="text" id="loot-setting" placeholder="e.g., Dragon's lair">
+                    </div>
+                </div>
+                <button class="btn" onclick="generateLoot()">Generate Loot</button>
+                <div id="loot-output" class="output-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Weather Panel -->
+        <div class="panel" id="weather-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Weather Generator</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Season</label>
+                            <select id="weather-season">
+                                <option value="spring">Spring</option>
+                                <option value="summer">Summer</option>
+                                <option value="autumn">Autumn</option>
+                                <option value="winter">Winter</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Region</label>
+                            <select id="weather-region">
+                                <option value="temperate">Temperate</option>
+                                <option value="tropical">Tropical</option>
+                                <option value="desert">Desert</option>
+                                <option value="arctic">Arctic</option>
+                                <option value="coastal">Coastal</option>
+                                <option value="mountain">Mountain</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="generateWeather()">Generate Weather</button>
+                    <div id="weather-output" class="output-area" style="display: none;"></div>
+                </div>
+                <div class="card">
+                    <h3>Current Weather</h3>
+                    <div id="current-weather"><div class="empty-state">No weather set</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Shop Panel -->
+        <div class="panel" id="shop-panel">
+            <div class="card">
+                <h3>Shop Generator</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Shop Type</label>
+                        <select id="shop-type">
+                            <option value="general store">General Store</option>
+                            <option value="blacksmith">Blacksmith</option>
+                            <option value="alchemist">Alchemist</option>
+                            <option value="magic shop">Magic Shop</option>
+                            <option value="tavern">Tavern</option>
+                            <option value="weaponsmith">Weaponsmith</option>
+                            <option value="armorer">Armorer</option>
+                            <option value="jeweler">Jeweler</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Settlement</label>
+                        <select id="shop-settlement">
+                            <option value="village">Village</option>
+                            <option value="town" selected>Town</option>
+                            <option value="city">City</option>
+                            <option value="capital">Capital</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Party Level</label>
+                        <input type="number" id="shop-level" value="5" min="1" max="20">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Special Notes</label>
+                    <input type="text" id="shop-notes" placeholder="e.g., Run by a retired adventurer">
+                </div>
+                <button class="btn" onclick="generateShop()">Generate Shop</button>
+                <div id="shop-output" class="output-area" style="display: none;"></div>
+            </div>
+        </div>
+
+        <!-- Tables Panel -->
+        <div class="panel" id="tables-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Random Tables</h3>
+                    <div id="tables-list"><div class="loading">Loading...</div></div>
+                </div>
+                <div class="card">
+                    <h3>Roll Result</h3>
+                    <div id="table-result" class="output-area"><div class="empty-state">Select a table to roll</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Names Panel -->
+        <div class="panel" id="names-panel">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Quick Name Generator</h3>
+                    <div class="form-group">
+                        <label>Culture</label>
+                        <select id="name-culture"><option value="">Random</option></select>
+                    </div>
+                    <button class="btn" onclick="quickName()">Generate Name</button>
+                    <div id="quick-name-result" class="mt-md" style="font-size: 1.5rem; font-weight: bold;"></div>
+                </div>
+                <div class="card">
+                    <h3>AI Name Generator</h3>
+                    <div class="form-group">
+                        <label>Culture</label>
+                        <select id="ai-name-culture"><option value="">Select culture...</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Count</label>
+                        <input type="number" id="name-count" value="10" min="1" max="20">
+                    </div>
+                    <button class="btn" onclick="generateNames()">Generate Names</button>
+                    <div id="names-output" class="output-area" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div class="modal" id="session-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>New Session</h3><button class="modal-close" onclick="closeModal('session-modal')">&times;</button></div>
+            <div class="form-group"><label>Session Number</label><input type="number" id="new-session-number" value="1"></div>
+            <div class="form-group"><label>Title</label><input type="text" id="new-session-title" placeholder="Optional title"></div>
+            <div class="form-group"><label>Date</label><input type="text" id="new-session-date" placeholder="e.g., 2024-03-15"></div>
+            <button class="btn" onclick="createSession()">Create</button>
+        </div>
+    </div>
+
+    <div class="modal" id="quest-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>New Quest</h3><button class="modal-close" onclick="closeModal('quest-modal')">&times;</button></div>
+            <div class="form-group"><label>Name</label><input type="text" id="new-quest-name"></div>
+            <div class="form-group"><label>Quest Giver</label><input type="text" id="new-quest-giver"></div>
+            <div class="form-group"><label>Description</label><textarea id="new-quest-description" rows="3"></textarea></div>
+            <div class="form-group"><label>Reward</label><input type="text" id="new-quest-reward"></div>
+            <button class="btn" onclick="createQuest()">Create</button>
+        </div>
+    </div>
+
+    <div class="modal" id="rumor-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Add Rumor</h3><button class="modal-close" onclick="closeModal('rumor-modal')">&times;</button></div>
+            <div class="form-group"><label>Rumor Text</label><textarea id="new-rumor-text" rows="3"></textarea></div>
+            <div class="form-group"><label>Source</label><input type="text" id="new-rumor-source" placeholder="Who told them?"></div>
+            <div class="form-group"><label>Truth Status (DM only)</label>
+                <select id="new-rumor-status">
+                    <option value="unknown">Unknown</option>
+                    <option value="true">True</option>
+                    <option value="false">False</option>
+                </select>
+            </div>
+            <button class="btn" onclick="addRumor()">Add</button>
+        </div>
+    </div>
+
+    <div class="modal" id="secret-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Add Secret</h3><button class="modal-close" onclick="closeModal('secret-modal')">&times;</button></div>
+            <div class="form-group"><label>Secret Name</label><input type="text" id="new-secret-name"></div>
+            <div class="form-group"><label>Description</label><textarea id="new-secret-description" rows="3"></textarea></div>
+            <button class="btn" onclick="addSecret()">Add</button>
+        </div>
+    </div>
+
+    <div class="modal" id="handout-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Add Handout</h3><button class="modal-close" onclick="closeModal('handout-modal')">&times;</button></div>
+            <div class="form-group"><label>Title</label><input type="text" id="new-handout-title"></div>
+            <div class="form-group"><label>Content</label><textarea id="new-handout-content" rows="4"></textarea></div>
+            <div class="form-group"><label>Given To</label><input type="text" id="new-handout-to" placeholder="e.g., Party, Ranger"></div>
+            <button class="btn" onclick="addHandout()">Add</button>
+        </div>
+    </div>
+
+    <div class="modal" id="downtime-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Add Downtime</h3><button class="modal-close" onclick="closeModal('downtime-modal')">&times;</button></div>
+            <div class="form-group"><label>Character</label><input type="text" id="new-downtime-pc"></div>
+            <div class="form-group"><label>Activity</label><input type="text" id="new-downtime-activity" placeholder="e.g., Crafting, Training"></div>
+            <div class="form-group"><label>Days</label><input type="number" id="new-downtime-days" value="7"></div>
+            <div class="form-group"><label>Notes</label><textarea id="new-downtime-notes" rows="2"></textarea></div>
+            <button class="btn" onclick="addDowntime()">Add</button>
+        </div>
+    </div>
+
+    <div class="modal" id="milestone-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Add Milestone</h3><button class="modal-close" onclick="closeModal('milestone-modal')">&times;</button></div>
+            <div class="form-group"><label>Name</label><input type="text" id="new-milestone-name"></div>
+            <div class="form-group"><label>Description</label><textarea id="new-milestone-description" rows="2"></textarea></div>
+            <button class="btn" onclick="addMilestone()">Add</button>
+        </div>
+    </div>
+
+    <div class="modal" id="condition-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Conditions</h3><button class="modal-close" onclick="closeModal('condition-modal')">&times;</button></div>
+            <div id="condition-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let campaignState = {};
+        let partyMembers = [];
+        let allQuests = [];
+
+        // Tab switching
+        document.querySelectorAll('.tab:not(.quest-filter)').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab:not(.quest-filter)').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`${tab.dataset.tab}-panel`).classList.add('active');
+                loadTabData(tab.dataset.tab);
+            });
+        });
+
+        // Quest filter
+        document.querySelectorAll('.quest-filter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.quest-filter').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                filterQuests(btn.dataset.status);
+            });
+        });
+
+        // Load state and initial data
+        loadCampaignState().then(() => loadSessions());
+
+        async function loadCampaignState() {
+            const res = await fetch('/api/campaign/state');
+            campaignState = await res.json();
+        }
+
+        function loadTabData(tab) {
+            const loaders = {
+                sessions: loadSessions, quests: loadQuests, party: loadParty,
+                progression: loadProgression, calendar: loadCalendar,
+                initiative: loadInitiative, resources: loadResources,
+                npcs: loadNPCEncounters, rumors: loadRumors, secrets: loadSecrets,
+                handouts: loadHandouts, downtime: loadDowntime, tables: loadTables,
+                names: loadNameCultures, weather: loadWeather
+            };
+            if (loaders[tab]) loaders[tab]();
+        }
+
+        // Streaming helper
+        async function streamTo(url, body, elId) {
+            const el = document.getElementById(elId);
+            el.style.display = 'block';
+            el.innerHTML = '<div class="loading">Generating...</div>';
+            try {
+                const res = await fetch(url, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body) });
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let content = '';
+                while (true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    for (const line of decoder.decode(value).split('\n')) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const d = JSON.parse(line.slice(6));
+                                if (d.chunk) { content += d.chunk; el.innerHTML = marked.parse(content); }
+                                if (d.error) el.innerHTML = `<div style="color:var(--danger)">Error: ${d.error}</div>`;
+                            } catch(e) {}
+                        }
+                    }
+                }
+            } catch(e) { el.innerHTML = `<div style="color:var(--danger)">Error: ${e.message}</div>`; }
+        }
+
+        // Sessions
+        async function loadSessions() {
+            const list = document.getElementById('sessions-list');
+            try {
+                const data = await (await fetch('/api/sessions')).json();
+                if (!data.sessions.length) { list.innerHTML = '<div class="empty-state">No sessions yet</div>'; return; }
+                const max = Math.max(...data.sessions.map(s => s.number || 0), 0);
+                document.getElementById('new-session-number').value = max + 1;
+                list.innerHTML = data.sessions.map(s => `
+                    <div class="list-item">
+                        <div class="flex-between">
+                            <span style="font-weight:bold;color:var(--accent);">#${s.number || '?'}</span>
+                            <span class="list-item-meta">${s.date || ''}</span>
+                        </div>
+                        <div class="list-item-title">${s.title}</div>
+                        <div class="list-item-meta">${s.preview || ''}</div>
+                    </div>
+                `).join('');
+            } catch(e) { list.innerHTML = '<div class="empty-state">Error loading</div>'; }
+        }
+
+        async function createSession() {
+            await fetch('/api/sessions/create', { method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    session_number: parseInt(document.getElementById('new-session-number').value),
+                    title: document.getElementById('new-session-title').value,
+                    date: document.getElementById('new-session-date').value
+                })
+            });
+            closeModal('session-modal'); loadSessions();
+        }
+
+        function generatePreviouslyOn() {
+            streamTo('/api/sessions/previously-on', { session_count: parseInt(document.getElementById('previously-count').value) }, 'previously-output');
+        }
+
+        function generatePlayerRecap() {
+            streamTo('/api/recap/player', { notes: document.getElementById('player-recap-notes').value }, 'player-recap-output');
+        }
+
+        // Quests
+        async function loadQuests() {
+            const list = document.getElementById('quests-list');
+            try {
+                const data = await (await fetch('/api/quests')).json();
+                allQuests = data.quests;
+                if (!allQuests.length) { list.innerHTML = '<div class="empty-state">No quests yet</div>'; return; }
+                renderQuests(allQuests);
+            } catch(e) { list.innerHTML = '<div class="empty-state">Error loading</div>'; }
+        }
+
+        function renderQuests(quests) {
+            document.getElementById('quests-list').innerHTML = quests.map(q => `
+                <div class="list-item">
+                    <div class="flex-between">
+                        <div>
+                            <span class="list-item-title">${q.name}</span>
+                            <span class="badge badge-${q.status}">${q.status}</span>
+                            <span class="badge badge-${q.priority}">${q.priority}</span>
+                        </div>
+                        <div>
+                            ${q.status !== 'completed' ? `<button class="btn btn-sm" onclick="setQuestStatus('${q.name}','completed')">&#10003;</button>` : ''}
+                            ${q.status !== 'active' ? `<button class="btn btn-sm btn-secondary" onclick="setQuestStatus('${q.name}','active')">&#8635;</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="list-item-meta">${q.quest_giver ? `From: ${q.quest_giver}` : ''} ${q.reward ? `| Reward: ${q.reward}` : ''}</div>
+                    <div class="mt-sm" style="color:var(--text-secondary);font-size:0.85rem;">${q.summary || ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function filterQuests(status) {
+            renderQuests(status === 'all' ? allQuests : allQuests.filter(q => q.status === status));
+        }
+
+        async function setQuestStatus(name, status) {
+            await fetch(`/api/campaign/quest/${encodeURIComponent(name)}/state`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({status}) });
+            const q = allQuests.find(x => x.name === name); if (q) q.status = status;
+            filterQuests(document.querySelector('.quest-filter.active').dataset.status);
+        }
+
+        async function createQuest() {
+            await fetch('/api/quests/create', { method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    name: document.getElementById('new-quest-name').value,
+                    quest_giver: document.getElementById('new-quest-giver').value,
+                    description: document.getElementById('new-quest-description').value,
+                    reward: document.getElementById('new-quest-reward').value
+                })
+            });
+            closeModal('quest-modal'); loadQuests();
+        }
+
+        // Party
+        async function loadParty() {
+            const list = document.getElementById('party-list');
+            try {
+                const [partyRes, stateRes] = await Promise.all([fetch('/api/party'), fetch('/api/campaign/state')]);
+                const partyData = await partyRes.json();
+                const state = await stateRes.json();
+                if (!partyData.members.length) { list.innerHTML = '<div class="empty-state">No party members. Add notes to Party folder.</div>'; return; }
+                partyMembers = partyData.members.map(m => {
+                    const s = state.party[m.name] || {};
+                    return { ...m, current_hp: s.current_hp ?? m.current_hp ?? m.max_hp, max_hp: s.max_hp ?? m.max_hp, conditions: s.conditions ?? [] };
+                });
+                renderParty();
+            } catch(e) { list.innerHTML = '<div class="empty-state">Error loading</div>'; }
+        }
+
+        function renderParty() {
+            document.getElementById('party-list').innerHTML = partyMembers.map(m => {
+                const pct = m.max_hp ? (m.current_hp / m.max_hp * 100) : 100;
+                const cls = pct <= 25 ? 'critical' : pct <= 50 ? 'low' : '';
+                const insp = campaignState.inspiration?.[m.name]?.has_inspiration;
+                return `
+                    <div class="list-item flex-between">
+                        <div>
+                            <div class="list-item-title">${m.name} ${insp ? '<span style="color:var(--accent)">&#9733;</span>' : ''}</div>
+                            <div class="list-item-meta">Lvl ${m.level||'?'} ${m.race||''} ${m.class||''} ${m.player ? `(${m.player})` : ''}</div>
+                            ${m.conditions?.length ? `<div class="mt-sm"><span class="badge badge-warning">${m.conditions.join(', ')}</span></div>` : ''}
+                        </div>
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <button class="btn btn-sm btn-secondary" onclick="adjustHP('${m.name}',-1)">-</button>
+                                <div style="text-align:center;min-width:60px;">
+                                    ${m.current_hp||0}/${m.max_hp||'?'}
+                                    <div class="hp-bar"><div class="hp-fill ${cls}" style="width:${Math.min(100,pct)}%"></div></div>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" onclick="adjustHP('${m.name}',1)">+</button>
+                            </div>
+                            <button class="btn btn-sm btn-secondary" onclick="toggleInspiration('${m.name}')" title="Inspiration">${insp ? '&#9733;' : '&#9734;'}</button>
+                            <button class="btn btn-sm btn-secondary" onclick="showConditions('${m.name}')">Cond</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function adjustHP(name, amt) {
+            const m = partyMembers.find(x => x.name === name); if (!m) return;
+            m.current_hp = Math.max(0, Math.min(m.max_hp, (m.current_hp||0) + amt));
+            renderParty();
+            await fetch(`/api/campaign/party/${encodeURIComponent(name)}/state`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({current_hp: m.current_hp, max_hp: m.max_hp}) });
+        }
+
+        async function fullRest() {
+            for (const m of partyMembers) {
+                m.current_hp = m.max_hp; m.conditions = [];
+                await fetch(`/api/campaign/party/${encodeURIComponent(m.name)}/state`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({current_hp: m.max_hp, conditions: []}) });
+            }
+            await fetch('/api/resources/long-rest', { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' });
+            renderParty();
+        }
+
+        async function toggleInspiration(name) {
+            const res = await fetch(`/api/inspiration/${encodeURIComponent(name)}`, { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' });
+            const data = await res.json();
+            if (!campaignState.inspiration) campaignState.inspiration = {};
+            campaignState.inspiration[name] = data;
+            renderParty();
+        }
+
+        function showConditions(name) {
+            const m = partyMembers.find(x => x.name === name); if (!m) return;
+            const conds = ['Blinded','Charmed','Deafened','Exhaustion','Frightened','Grappled','Incapacitated','Invisible','Paralyzed','Petrified','Poisoned','Prone','Restrained','Stunned','Unconscious','Concentrating'];
+            document.getElementById('condition-list').innerHTML = conds.map(c => `
+                <label style="display:block;margin:8px 0;cursor:pointer;">
+                    <input type="checkbox" ${m.conditions?.includes(c)?'checked':''} onchange="toggleCondition('${name}','${c}',this.checked)"> ${c}
+                </label>
+            `).join('');
+            showModal('condition-modal');
+        }
+
+        async function toggleCondition(name, cond, add) {
+            const m = partyMembers.find(x => x.name === name); if (!m) return;
+            if (!m.conditions) m.conditions = [];
+            if (add && !m.conditions.includes(cond)) m.conditions.push(cond);
+            else m.conditions = m.conditions.filter(c => c !== cond);
+            renderParty();
+            await fetch(`/api/campaign/party/${encodeURIComponent(name)}/state`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({conditions: m.conditions}) });
+        }
+
+        // Progression
+        async function loadProgression() {
+            await loadCampaignState();
+            const p = campaignState.progression || {party_level: 1, party_xp: 0, milestones: []};
+            document.getElementById('progression-display').innerHTML = `
+                <div class="stat-value">Level ${p.party_level}</div>
+                <div class="stat-label">${p.party_xp} XP</div>
+            `;
+            document.getElementById('set-level').value = p.party_level;
+            document.getElementById('milestones-list').innerHTML = p.milestones?.length ?
+                p.milestones.map(m => `<div class="list-item"><div class="list-item-title">${m.name}</div><div class="list-item-meta">${m.date} - ${m.description||''}</div></div>`).join('') :
+                '<div class="empty-state">No milestones yet</div>';
+        }
+
+        async function addXP() {
+            const amt = parseInt(document.getElementById('add-xp-amount').value) || 0;
+            await fetch('/api/progression/xp', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({amount: amt}) });
+            loadProgression();
+        }
+
+        async function setLevel() {
+            const lvl = parseInt(document.getElementById('set-level').value) || 1;
+            await fetch('/api/progression/level', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({level: lvl}) });
+            loadProgression();
+        }
+
+        async function addMilestone() {
+            await fetch('/api/progression/milestone', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ name: document.getElementById('new-milestone-name').value, description: document.getElementById('new-milestone-description').value })
+            });
+            closeModal('milestone-modal'); loadProgression();
+        }
+
+        // Calendar
+        async function loadCalendar() {
+            await loadCampaignState();
+            const cal = campaignState.calendar || {day:1,month:1,year:1,era:'AR'};
+            document.getElementById('tracked-calendar').innerHTML = `<div class="stat-value">Day ${cal.day}, Month ${cal.month}, Year ${cal.year} ${cal.era}</div>`;
+            try {
+                const data = await (await fetch('/api/calendar')).json();
+                document.getElementById('calendar-events').innerHTML = data.events?.length ?
+                    data.events.slice(0,15).map(e => `<div class="list-item"><div class="list-item-title">${e.date_text}</div><div class="list-item-meta">${e.context}</div></div>`).join('') :
+                    '<div class="empty-state">No dated events</div>';
+            } catch(e) {}
+        }
+
+        async function advanceCalendar(days) {
+            const res = await fetch('/api/campaign/calendar/advance', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({days}) });
+            const cal = await res.json();
+            document.getElementById('tracked-calendar').innerHTML = `<div class="stat-value">Day ${cal.day}, Month ${cal.month}, Year ${cal.year} ${cal.era}</div>`;
+        }
+
+        // Initiative
+        async function loadInitiative() {
+            await loadCampaignState();
+            const init = campaignState.initiative || {active:false, combatants:[], round:1, turn:0};
+            const timer = campaignState.timer || {active:false};
+            document.getElementById('combat-status').innerHTML = init.active ? `<span class="badge badge-active">Round ${init.round}</span>` : '<span class="badge badge-neutral">No Combat</span>';
+            document.getElementById('timer-display').style.display = timer.active ? 'block' : 'none';
+            if (timer.active) {
+                document.getElementById('timer-display').innerHTML = `<div class="timer-display ${timer.rounds_remaining <= 1 ? 'urgent' : ''}">${timer.name}: ${timer.rounds_remaining} rounds</div>`;
+            }
+            if (!init.combatants?.length) { document.getElementById('initiative-list').innerHTML = '<div class="empty-state">No combatants</div>'; return; }
+            document.getElementById('initiative-list').innerHTML = init.combatants.map((c, i) => {
+                const pct = c.max_hp ? (c.hp / c.max_hp * 100) : 100;
+                const cls = pct <= 25 ? 'critical' : pct <= 50 ? 'low' : '';
+                const dead = c.hp <= 0;
+                return `
+                    <div class="init-item ${i === init.turn ? 'current' : ''} ${dead ? 'dead' : ''}">
+                        <div class="init-number">${c.initiative}</div>
+                        <div class="init-name">${c.name} <span class="badge badge-${c.is_pc ? 'pc' : 'npc'}">${c.is_pc ? 'PC' : 'NPC'}</span></div>
+                        <div class="init-hp">
+                            <button class="btn btn-sm btn-secondary" onclick="adjustCombatantHP('${c.id}',-1)">-</button>
+                            <span>${c.hp}/${c.max_hp}</span>
+                            <div class="hp-bar"><div class="hp-fill ${cls}" style="width:${Math.min(100,pct)}%"></div></div>
+                            <button class="btn btn-sm btn-secondary" onclick="adjustCombatantHP('${c.id}',1)">+</button>
+                        </div>
+                        <div class="init-actions">
+                            <button class="btn btn-sm btn-danger" onclick="removeCombatant('${c.id}')">X</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            // Combat log
+            const log = campaignState.combat_log || [];
+            document.getElementById('combat-log').innerHTML = log.slice(-10).reverse().map(l => `<div class="list-item-meta">R${l.round}: ${l.actor} ${l.action} ${l.target} ${l.damage ? `(${l.damage} dmg)` : ''}</div>`).join('');
+        }
+
+        async function startCombat() { await fetch('/api/combat/start', {method:'POST'}); loadInitiative(); }
+        async function endCombat() { await fetch('/api/combat/end', {method:'POST'}); loadInitiative(); }
+        async function nextTurn() { await fetch('/api/combat/next-turn', {method:'POST'}); loadInitiative(); }
+
+        async function addCombatant() {
+            await fetch('/api/combat/combatant', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    name: document.getElementById('combatant-name').value,
+                    initiative: parseInt(document.getElementById('combatant-init').value) || 0,
+                    hp: parseInt(document.getElementById('combatant-hp').value) || 10,
+                    max_hp: parseInt(document.getElementById('combatant-hp').value) || 10,
+                    is_pc: document.getElementById('combatant-type').value === 'true'
+                })
+            });
+            document.getElementById('combatant-name').value = '';
+            loadInitiative();
+        }
+
+        async function removeCombatant(id) {
+            await fetch(`/api/combat/combatant/${id}`, {method:'DELETE'});
+            loadInitiative();
+        }
+
+        async function adjustCombatantHP(id, amt) {
+            await loadCampaignState();
+            const c = campaignState.initiative?.combatants?.find(x => x.id === id);
+            if (c) {
+                const newHp = Math.max(0, c.hp + amt);
+                await fetch(`/api/combat/combatant/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hp: newHp}) });
+                loadInitiative();
+            }
+        }
+
+        async function startTimer() {
+            await fetch('/api/timer/start', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ name: document.getElementById('timer-name').value, rounds: parseInt(document.getElementById('timer-rounds').value) || 3 })
+            });
+            loadInitiative();
+        }
+
+        async function stopTimer() { await fetch('/api/timer/stop', {method:'POST'}); loadInitiative(); }
+
+        // Resources
+        async function loadResources() {
+            await loadCampaignState();
+            const list = document.getElementById('resources-list');
+            const res = campaignState.resources || {};
+            if (!Object.keys(res).length) { list.innerHTML = '<div class="empty-state">No resources tracked. Use party panel first.</div>'; return; }
+            list.innerHTML = Object.entries(res).map(([name, data]) => {
+                const slots = data.spell_slots || {};
+                const abilities = data.abilities || {};
+                return `
+                    <div class="list-item">
+                        <div class="list-item-title">${name}</div>
+                        <div class="mt-sm">
+                            <strong>Spell Slots:</strong>
+                            ${Object.entries(slots).map(([lvl, [used, max]]) => `
+                                <span style="margin-left:8px;">L${lvl}: ${max - used}/${max}</span>
+                            `).join('') || '<span class="list-item-meta"> None tracked</span>'}
+                        </div>
+                        <div class="mt-sm">
+                            <strong>Abilities:</strong>
+                            ${Object.entries(abilities).map(([ab, [used, max]]) => `
+                                <span style="margin-left:8px;">${ab}: ${max - used}/${max}</span>
+                            `).join('') || '<span class="list-item-meta"> None tracked</span>'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function longRestAll() { await fetch('/api/resources/long-rest', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}); loadResources(); }
+
+        // NPCs
+        async function loadNPCEncounters() {
+            try {
+                const data = await (await fetch('/api/npcs/encounters')).json();
+                document.getElementById('npc-encounters-list').innerHTML = data.encounters?.length ?
+                    data.encounters.map(n => `
+                        <div class="list-item flex-between">
+                            <div>
+                                <span class="list-item-title">${n.name}</span>
+                                <span class="badge badge-${n.disposition}">${n.disposition}</span>
+                                ${!n.is_alive ? '<span class="badge badge-failed">dead</span>' : ''}
+                            </div>
+                            <span class="list-item-meta">${n.appearance_count} appearances</span>
+                        </div>
+                    `).join('') : '<div class="empty-state">No NPC encounters tracked</div>';
+            } catch(e) { document.getElementById('npc-encounters-list').innerHTML = '<div class="empty-state">Error loading</div>'; }
+        }
+
+        // Rumors
+        async function loadRumors() {
+            await loadCampaignState();
+            const rumors = campaignState.rumors || [];
+            document.getElementById('rumors-list').innerHTML = rumors.length ?
+                rumors.map(r => `
+                    <div class="list-item flex-between">
+                        <div>
+                            <div>${r.text}</div>
+                            <div class="list-item-meta">Source: ${r.source || 'Unknown'}</div>
+                        </div>
+                        <div>
+                            <span class="badge badge-${r.status}">${r.status}</span>
+                            ${!r.revealed ? `<button class="btn btn-sm btn-secondary" onclick="revealRumor('${r.id}')">Reveal</button>` : ''}
+                        </div>
+                    </div>
+                `).join('') : '<div class="empty-state">No rumors yet</div>';
+        }
+
+        async function addRumor() {
+            await fetch('/api/rumors', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    text: document.getElementById('new-rumor-text').value,
+                    source: document.getElementById('new-rumor-source').value,
+                    status: document.getElementById('new-rumor-status').value
+                })
+            });
+            closeModal('rumor-modal'); loadRumors();
+        }
+
+        async function revealRumor(id) {
+            await fetch(`/api/rumors/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({revealed: true}) });
+            loadRumors();
+        }
+
+        // Secrets
+        async function loadSecrets() {
+            await loadCampaignState();
+            const secrets = campaignState.secrets || [];
+            document.getElementById('secrets-list').innerHTML = secrets.length ?
+                secrets.map(s => `
+                    <div class="list-item flex-between">
+                        <div>
+                            <div class="list-item-title">${s.name}</div>
+                            <div class="list-item-meta">${s.description}</div>
+                        </div>
+                        <div>
+                            <span class="badge badge-${s.revealed ? 'active' : 'paused'}">${s.revealed ? 'Revealed' : 'Hidden'}</span>
+                            ${!s.revealed ? `<button class="btn btn-sm btn-secondary" onclick="revealSecret('${s.id}')">Reveal</button>` : ''}
+                        </div>
+                    </div>
+                `).join('') : '<div class="empty-state">No secrets tracked</div>';
+        }
+
+        async function addSecret() {
+            await fetch('/api/secrets', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    name: document.getElementById('new-secret-name').value,
+                    description: document.getElementById('new-secret-description').value
+                })
+            });
+            closeModal('secret-modal'); loadSecrets();
+        }
+
+        async function revealSecret(id) {
+            await fetch(`/api/secrets/${id}/reveal`, { method:'POST', headers:{'Content-Type':'application/json'}, body: '{}' });
+            loadSecrets();
+        }
+
+        // Handouts
+        async function loadHandouts() {
+            await loadCampaignState();
+            const handouts = campaignState.handouts || [];
+            document.getElementById('handouts-list').innerHTML = handouts.length ?
+                handouts.map(h => `
+                    <div class="list-item">
+                        <div class="list-item-title">${h.title}</div>
+                        <div class="list-item-meta">Session ${h.given_session} | To: ${h.given_to?.join(', ') || 'Party'}</div>
+                        <div class="mt-sm" style="font-size:0.85rem;">${h.content}</div>
+                    </div>
+                `).join('') : '<div class="empty-state">No handouts logged</div>';
+        }
+
+        async function addHandout() {
+            await fetch('/api/handouts', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    title: document.getElementById('new-handout-title').value,
+                    content: document.getElementById('new-handout-content').value,
+                    given_to: document.getElementById('new-handout-to').value.split(',').map(s => s.trim())
+                })
+            });
+            closeModal('handout-modal'); loadHandouts();
+        }
+
+        // Downtime
+        async function loadDowntime() {
+            await loadCampaignState();
+            const dt = campaignState.downtime || [];
+            document.getElementById('downtime-list').innerHTML = dt.length ?
+                dt.map(d => `
+                    <div class="list-item flex-between">
+                        <div>
+                            <div class="list-item-title">${d.pc_name}: ${d.activity}</div>
+                            <div class="list-item-meta">${d.days} days starting ${d.start_date}</div>
+                            ${d.notes ? `<div class="mt-sm list-item-meta">${d.notes}</div>` : ''}
+                        </div>
+                        <div>
+                            <span class="badge badge-${d.completed ? 'completed' : 'active'}">${d.completed ? 'Done' : 'In Progress'}</span>
+                            ${!d.completed ? `<button class="btn btn-sm btn-secondary" onclick="completeDowntime('${d.id}')">Complete</button>` : ''}
+                        </div>
+                    </div>
+                `).join('') : '<div class="empty-state">No downtime activities</div>';
+        }
+
+        async function addDowntime() {
+            await fetch('/api/downtime', { method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    pc_name: document.getElementById('new-downtime-pc').value,
+                    activity: document.getElementById('new-downtime-activity').value,
+                    days: parseInt(document.getElementById('new-downtime-days').value) || 7,
+                    notes: document.getElementById('new-downtime-notes').value
+                })
+            });
+            closeModal('downtime-modal'); loadDowntime();
+        }
+
+        async function completeDowntime(id) {
+            await fetch(`/api/downtime/${id}/complete`, { method:'POST' });
+            loadDowntime();
+        }
+
+        // Generators
+        function generateSessionPrep() { streamTo('/api/sessions/prep', {}, 'prep-output'); }
+        function generateEncounter() {
+            streamTo('/api/encounter/generate', {
+                difficulty: document.getElementById('encounter-difficulty').value,
+                type: document.getElementById('encounter-type').value,
+                setting: document.getElementById('encounter-setting').value
+            }, 'encounter-output');
+        }
+        function generateLoot() {
+            streamTo('/api/loot/generate', {
+                level: parseInt(document.getElementById('loot-level').value),
+                type: document.getElementById('loot-type').value,
+                setting: document.getElementById('loot-setting').value
+            }, 'loot-output');
+        }
+
+        // Weather
+        async function loadWeather() {
+            await loadCampaignState();
+            document.getElementById('current-weather').innerHTML = campaignState.current_weather ?
+                `<div>${marked.parse(campaignState.current_weather)}</div>` :
+                '<div class="empty-state">No weather set</div>';
+        }
+
+        function generateWeather() {
+            streamTo('/api/weather/generate', {
+                season: document.getElementById('weather-season').value,
+                region: document.getElementById('weather-region').value
+            }, 'weather-output');
+            setTimeout(loadWeather, 5000);
+        }
+
+        // Shop
+        function generateShop() {
+            streamTo('/api/shop/generate', {
+                shop_type: document.getElementById('shop-type').value,
+                settlement: document.getElementById('shop-settlement').value,
+                level: parseInt(document.getElementById('shop-level').value),
+                notes: document.getElementById('shop-notes').value
+            }, 'shop-output');
+        }
+
+        // Tables
+        async function loadTables() {
+            try {
+                const data = await (await fetch('/api/tables')).json();
+                document.getElementById('tables-list').innerHTML = data.tables?.length ?
+                    data.tables.map(t => `
+                        <div class="list-item" style="cursor:pointer;" onclick="rollTable('${t.path}')">
+                            <div class="list-item-title">${t.name}</div>
+                            <div class="list-item-meta">${t.entry_count} entries</div>
+                        </div>
+                    `).join('') : '<div class="empty-state">No random tables found</div>';
+            } catch(e) { document.getElementById('tables-list').innerHTML = '<div class="empty-state">Error loading</div>'; }
+        }
+
+        async function rollTable(path) {
+            const res = await fetch('/api/tables/roll', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({table_path: path}) });
+            const data = await res.json();
+            document.getElementById('table-result').innerHTML = data.error ?
+                `<div class="empty-state">${data.error}</div>` :
+                `<div class="stat-value">${data.roll}</div><div class="stat-label">of ${data.total_entries}</div><div class="mt-md" style="font-size:1.2rem;">${data.result}</div>`;
+        }
+
+        // Names
+        async function loadNameCultures() {
+            try {
+                const data = await (await fetch('/api/campaign/names')).json();
+                const cultures = Object.keys(data);
+                const opts = '<option value="">Random</option>' + cultures.map(c => `<option value="${c}">${c}</option>`).join('');
+                document.getElementById('name-culture').innerHTML = opts;
+                document.getElementById('ai-name-culture').innerHTML = '<option value="">Select...</option>' + cultures.map(c => `<option value="${c}">${c}</option>`).join('');
+            } catch(e) {}
+        }
+
+        async function quickName() {
+            const culture = document.getElementById('name-culture').value;
+            const res = await fetch(`/api/name/quick?culture=${culture}`);
+            const data = await res.json();
+            document.getElementById('quick-name-result').innerHTML = data.error ? data.error : `${data.name} <span style="font-size:0.8rem;color:var(--text-secondary)">(${data.culture})</span>`;
+        }
+
+        function generateNames() {
+            streamTo('/api/campaign/names/generate', {
+                culture: document.getElementById('ai-name-culture').value,
+                count: parseInt(document.getElementById('name-count').value) || 10
+            }, 'names-output');
+        }
+
+        // Modals
+        function showModal(id) { document.getElementById(id).classList.add('show'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+        document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); }));
+
+        // Theme
+        function toggleTheme() {
+            const t = document.body.getAttribute('data-theme') === 'light' ? '' : 'light';
+            document.body.setAttribute('data-theme', t);
+            localStorage.setItem('theme', t || 'dark');
+        }
+        if (localStorage.getItem('theme') === 'light') document.body.setAttribute('data-theme', 'light');
+    </script>
+</body>
+</html>

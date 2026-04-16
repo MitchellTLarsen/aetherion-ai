@@ -32,8 +32,15 @@
                 New Chat
             </button>
 
-            <div class="nav-section">
-                <span class="nav-section-title">Tools</span>
+            <div class="nav-section" data-module="worldbuilding">
+                <span class="nav-section-title">Worldbuilding</span>
+                <a class="nav-item" href="/worldbuilding" target="_blank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10"/>
+                    </svg>
+                    Worldbuilding Hub
+                </a>
                 <a class="nav-item" href="/graph" target="_blank">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/>
@@ -41,6 +48,17 @@
                         <path d="M6 9v6M18 9v6M9 6h6M9 18h6"/>
                     </svg>
                     Relationship Graph
+                </a>
+            </div>
+
+            <div class="nav-section" data-module="campaign">
+                <span class="nav-section-title">Campaign</span>
+                <a class="nav-item" href="/campaign" target="_blank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+                    </svg>
+                    Campaign Manager
                 </a>
                 <button class="nav-item" onclick="openSessionRecap()">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -58,7 +76,7 @@
                 </button>
             </div>
 
-            <div class="nav-section">
+            <div class="nav-section" data-module="character">
                 <span class="nav-section-title">Character Voice</span>
                 <div class="character-search-wrapper">
                     <input type="text" id="character-search" class="character-search" placeholder="Search characters..." oninput="filterCharacters()">
@@ -274,25 +292,60 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div class="setting-group">
-                    <label>Default Provider</label>
-                    <select id="default-provider">
-                        <option value="gpt">OpenAI GPT</option>
-                        <option value="gemini">Google Gemini</option>
-                        <option value="anthropic">Anthropic Claude</option>
-                        <option value="ollama">Ollama (Local)</option>
-                        <option value="groq">Groq</option>
-                    </select>
+                <div class="settings-section">
+                    <h3 class="settings-section-title">General</h3>
+                    <div class="setting-group">
+                        <label>Default Provider</label>
+                        <select id="default-provider">
+                            <option value="gpt">OpenAI GPT</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="anthropic">Anthropic Claude</option>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="groq">Groq</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Context chunks</label>
+                        <input type="number" id="context-size" value="20" min="5" max="50" />
+                    </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="auto-scroll" checked />
+                            Auto-scroll on new messages
+                        </label>
+                    </div>
                 </div>
-                <div class="setting-group">
-                    <label>Context chunks</label>
-                    <input type="number" id="context-size" value="20" min="5" max="50" />
-                </div>
-                <div class="setting-group">
-                    <label>
-                        <input type="checkbox" id="auto-scroll" checked />
-                        Auto-scroll on new messages
-                    </label>
+
+                <div class="settings-section">
+                    <h3 class="settings-section-title">Modules</h3>
+                    <p class="settings-description">Enable or disable optional features</p>
+                    <div class="setting-group module-toggle">
+                        <label>
+                            <input type="checkbox" id="module-worldbuilding" onchange="saveModuleSettings()" />
+                            <span class="module-info">
+                                <strong>Worldbuilding Tools</strong>
+                                <span>Name generator, NPC cards, timeline, factions, relationship graph, lore gaps, plot threads, writing tools</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="setting-group module-toggle">
+                        <label>
+                            <input type="checkbox" id="module-campaign" onchange="saveModuleSettings()" />
+                            <span class="module-info">
+                                <strong>Campaign Manager</strong>
+                                <span>Session recap, consistency checker, session prep tools</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div class="setting-group module-toggle">
+                        <label>
+                            <input type="checkbox" id="module-character" onchange="saveModuleSettings()" />
+                            <span class="module-info">
+                                <strong>Character Voice</strong>
+                                <span>Chat as your NPCs with their personality</span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>

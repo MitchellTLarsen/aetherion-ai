@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worldbuilding Hub - Aetherion</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #13141a;
+            --bg-secondary: #1a1b23;
+            --bg-card: #1e1f28;
+            --text-primary: #e8e6e3;
+            --text-secondary: #9d9a95;
+            --accent: #c9a227;
+            --accent-hover: #d4a373;
+            --border: #2a2b35;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #f87171;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #faf8f5;
+            --bg-secondary: #f5f2ed;
+            --bg-card: #ffffff;
+            --text-primary: #2d2a26;
+            --text-secondary: #5c5955;
+            --border: #e0dcd4;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .header-actions button {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .header-actions button:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .tab:hover {
+            background: var(--bg-card);
+        }
+
+        .tab.active {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .panel {
+            display: none;
+        }
+
+        .panel.active {
+            display: block;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .card h3 {
+            color: var(--accent);
+            margin-bottom: 12px;
+            font-size: 1rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .list-item {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+
+        .list-item:hover {
+            background: var(--border);
+        }
+
+        .list-item-title {
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .list-item-meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-mystery { background: #7c3aed33; color: #a78bfa; }
+        .badge-prophecy { background: #f59e0b33; color: #fbbf24; }
+        .badge-secret { background: #ef444433; color: #f87171; }
+        .badge-question { background: #3b82f633; color: #60a5fa; }
+        .badge-thread { background: #10b98133; color: #34d399; }
+        .badge-hostile { background: #ef444433; color: #f87171; }
+        .badge-allied { background: #10b98133; color: #34d399; }
+        .badge-neutral { background: #64748b33; color: #94a3b8; }
+        .badge-trade { background: #f59e0b33; color: #fbbf24; }
+
+        .tool-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .tool-section h2 {
+            color: var(--accent);
+            margin-bottom: 16px;
+            font-size: 1.1rem;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-group textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .output-box {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 16px;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+
+        .output-box h2 { font-size: 1.2rem; margin-bottom: 8px; }
+        .output-box h3 { font-size: 1rem; margin-top: 12px; margin-bottom: 6px; }
+        .output-box p { margin-bottom: 8px; }
+        .output-box strong { color: var(--accent); }
+
+        .timeline-event {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--accent);
+            margin-bottom: 12px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .timeline-year {
+            font-weight: bold;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
+
+        .gap-item {
+            padding: 12px;
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--warning);
+            margin-bottom: 8px;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .gap-item.broken-link {
+            border-left-color: var(--danger);
+        }
+
+        .missing-field {
+            display: inline-block;
+            background: var(--warning);
+            color: #000;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-right: 4px;
+            margin-top: 4px;
+        }
+
+        .faction-graph {
+            min-height: 400px;
+            background: var(--bg-primary);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
+        }
+
+        .culture-btn {
+            display: inline-block;
+            margin: 4px;
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .culture-btn:hover, .culture-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .name-output {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .generated-name {
+            background: var(--bg-secondary);
+            padding: 6px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .generated-name:hover {
+            background: var(--accent);
+        }
+
+        .loading {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .recent-file {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .recent-file-name {
+            font-weight: 500;
+        }
+
+        .recent-file-time {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <a href="/">Aetherion</a> / Worldbuilding Hub
+        </h1>
+        <div class="header-actions">
+            <button onclick="location.href='/campaign'">Campaign Manager</button>
+            <button onclick="location.href='/graph'">Relationship Graph</button>
+            <button onclick="toggleTheme()">Theme</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="showPanel('overview')">Overview</button>
+            <button class="tab" onclick="showPanel('npcs')">NPC Cards</button>
+            <button class="tab" onclick="showPanel('names')">Name Generator</button>
+            <button class="tab" onclick="showPanel('timeline')">Timeline</button>
+            <button class="tab" onclick="showPanel('factions')">Factions</button>
+            <button class="tab" onclick="showPanel('threads')">Plot Threads</button>
+            <button class="tab" onclick="showPanel('gaps')">Lore Gaps</button>
+            <button class="tab" onclick="showPanel('writing')">Writing Tools</button>
+        </div>
+
+        <!-- Overview Panel -->
+        <div id="panel-overview" class="panel active">
+            <div class="grid" id="stats-grid">
+                <div class="card">
+                    <h3>Loading...</h3>
+                </div>
+            </div>
+
+            <div class="tool-section" style="margin-top: 24px;">
+                <h2>Recent Files</h2>
+                <div id="recent-files">
+                    <p class="loading">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- NPC Cards Panel -->
+        <div id="panel-npcs" class="panel">
+            <div class="two-col">
+                <div class="tool-section">
+                    <h2>Generate NPC Quick Card</h2>
+                    <div class="form-group">
+                        <label>Character Name</label>
+                        <input type="text" id="npc-name" placeholder="Enter character name...">
+                    </div>
+                    <button class="btn" onclick="generateNPCCard()">Generate Card</button>
+                </div>
+                <div class="tool-section">
+                    <h2>Generated Card</h2>
+                    <div id="npc-card-output" class="output-box">
+                        <p class="loading">Enter a character name and click Generate</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Name Generator Panel -->
+        <div id="panel-names" class="panel">
+            <div class="tool-section">
+                <h2>Name Generator</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                    Select a culture to generate names matching that style.
+                </p>
+                <div id="culture-buttons">
+                    <p class="loading">Loading cultures...</p>
+                </div>
+                <div class="form-group" style="margin-top: 16px;">
+                    <label>Number of names</label>
+                    <input type="number" id="name-count" value="10" min="1" max="50" style="width: 100px;">
+                    <button class="btn" onclick="generateNames()" style="margin-left: 12px;">Generate</button>
+                </div>
+                <div id="names-output" class="output-box" style="min-height: 80px;">
+                    <p class="loading">Select a culture above</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline Panel -->
+        <div id="panel-timeline" class="panel">
+            <div class="tool-section">
+                <h2>Timeline Events</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                    Events extracted from your notes (sorted by year)
+                </p>
+                <div id="timeline-events">
+                    <p class="loading">Loading timeline...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Factions Panel -->
+        <div id="panel-factions" class="panel">
+            <div class="tool-section">
+                <h2>Faction Relationships</h2>
+                <div id="faction-list">
+                    <p class="loading">Loading factions...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Plot Threads Panel -->
+        <div id="panel-threads" class="panel">
+            <div class="tool-section">
+                <h2>Unresolved Plot Threads</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                    Prophecies, mysteries, secrets, and unanswered questions found in your notes
+                </p>
+                <div id="threads-list">
+                    <p class="loading">Loading threads...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lore Gaps Panel -->
+        <div id="panel-gaps" class="panel">
+            <div class="two-col">
+                <div class="tool-section">
+                    <h2>Missing Information</h2>
+                    <div id="gaps-list">
+                        <p class="loading">Loading...</p>
+                    </div>
+                </div>
+                <div class="tool-section">
+                    <h2>Broken Links</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                        Links to non-existent files
+                    </p>
+                    <div id="broken-links-list">
+                        <p class="loading">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Writing Tools Panel -->
+        <div id="panel-writing" class="panel">
+            <div class="two-col">
+                <div class="tool-section">
+                    <h2>Description Expander</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                        Turn brief notes into vivid prose
+                    </p>
+                    <div class="form-group">
+                        <label>Brief Notes</label>
+                        <textarea id="expand-notes" placeholder="e.g., Dark tavern, shady patrons, fire crackling..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Context (optional)</label>
+                        <input type="text" id="expand-context" placeholder="e.g., Location in the slums of Cresthaven">
+                    </div>
+                    <button class="btn" onclick="expandDescription()">Expand</button>
+                    <div id="expand-output" class="output-box"></div>
+                </div>
+
+                <div class="tool-section">
+                    <h2>Sensory Enrichment</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                        Add sights, sounds, smells, and atmosphere
+                    </p>
+                    <div class="form-group">
+                        <label>Current Description</label>
+                        <textarea id="sensory-input" placeholder="Paste your existing description here..."></textarea>
+                    </div>
+                    <button class="btn" onclick="enrichSensory()">Enrich</button>
+                    <div id="sensory-output" class="output-box"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedCulture = null;
+        let namingPatterns = {};
+
+        // Panel switching
+        function showPanel(name) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById(`panel-${name}`).classList.add('active');
+            event.target.classList.add('active');
+
+            // Load data for panel
+            if (name === 'overview') loadOverview();
+            if (name === 'names') loadCultures();
+            if (name === 'timeline') loadTimeline();
+            if (name === 'factions') loadFactions();
+            if (name === 'threads') loadThreads();
+            if (name === 'gaps') loadGaps();
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+        }
+
+        // Overview
+        async function loadOverview() {
+            try {
+                const response = await fetch('/api/campaign/overview');
+                const data = await response.json();
+
+                const grid = document.getElementById('stats-grid');
+                grid.innerHTML = `
+                    <div class="card">
+                        <div class="stat-value">${data.characters}</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-value">${data.locations}</div>
+                        <div class="stat-label">Locations</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-value">${data.factions}</div>
+                        <div class="stat-label">Factions/Kingdoms</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-value">${data.total_notes}</div>
+                        <div class="stat-label">Total Notes</div>
+                    </div>
+                `;
+
+                const recentDiv = document.getElementById('recent-files');
+                if (data.recent_files.length > 0) {
+                    recentDiv.innerHTML = data.recent_files.map(f => `
+                        <div class="list-item recent-file" onclick="openInObsidian('${f.path}')">
+                            <span class="recent-file-name">${f.name}</span>
+                            <span class="recent-file-time">${formatTime(f.modified)}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    recentDiv.innerHTML = '<p>No recent files found</p>';
+                }
+            } catch (e) {
+                console.error('Error loading overview:', e);
+            }
+        }
+
+        function formatTime(timestamp) {
+            const date = new Date(timestamp * 1000);
+            const now = new Date();
+            const diff = now - date;
+            if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            return date.toLocaleDateString();
+        }
+
+        function openInObsidian(path) {
+            window.open(`obsidian://open?vault=Aetherion&file=${encodeURIComponent(path)}`, '_blank');
+        }
+
+        // NPC Cards
+        async function generateNPCCard() {
+            const name = document.getElementById('npc-name').value.trim();
+            if (!name) return;
+
+            const output = document.getElementById('npc-card-output');
+            output.innerHTML = '<p class="loading">Generating card...</p>';
+
+            try {
+                const response = await fetch('/api/campaign/npc-card/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let content = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const text = decoder.decode(value);
+                    for (const line of text.split('\n')) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.chunk) {
+                                    content += data.chunk;
+                                    output.innerHTML = marked.parse(content);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            } catch (e) {
+                output.innerHTML = '<p style="color: var(--danger);">Error: ' + e.message + '</p>';
+            }
+        }
+
+        // Name Generator
+        async function loadCultures() {
+            try {
+                const response = await fetch('/api/campaign/names');
+                namingPatterns = await response.json();
+
+                const container = document.getElementById('culture-buttons');
+                const cultures = Object.keys(namingPatterns);
+
+                if (cultures.length === 0) {
+                    container.innerHTML = '<p>No cultures found. Add characters to Database/Characters/[Culture]/ folders.</p>';
+                    return;
+                }
+
+                container.innerHTML = cultures.map(c => `
+                    <span class="culture-btn" onclick="selectCulture('${c}')">${c} (${namingPatterns[c].length})</span>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading cultures:', e);
+            }
+        }
+
+        function selectCulture(culture) {
+            selectedCulture = culture;
+            document.querySelectorAll('.culture-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+
+            const output = document.getElementById('names-output');
+            output.innerHTML = `<p>Selected: <strong>${culture}</strong> - Click Generate to create names</p>`;
+        }
+
+        async function generateNames() {
+            if (!selectedCulture) {
+                alert('Please select a culture first');
+                return;
+            }
+
+            const count = parseInt(document.getElementById('name-count').value) || 10;
+            const output = document.getElementById('names-output');
+            output.innerHTML = '<p class="loading">Generating names...</p>';
+
+            try {
+                const response = await fetch('/api/campaign/names/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ culture: selectedCulture, count })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let content = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const text = decoder.decode(value);
+                    for (const line of text.split('\n')) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.chunk) {
+                                    content += data.chunk;
+                                    // Parse names from content
+                                    const names = content.split('\n').filter(n => n.trim());
+                                    output.innerHTML = '<div class="name-output">' +
+                                        names.map(n => `<span class="generated-name" onclick="copyName(this)">${n.replace(/^\d+\.\s*/, '').trim()}</span>`).join('') +
+                                        '</div><p style="margin-top: 12px; font-size: 0.8rem; color: var(--text-secondary);">Click a name to copy</p>';
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            } catch (e) {
+                output.innerHTML = '<p style="color: var(--danger);">Error: ' + e.message + '</p>';
+            }
+        }
+
+        function copyName(el) {
+            navigator.clipboard.writeText(el.textContent);
+            el.style.background = 'var(--success)';
+            setTimeout(() => el.style.background = '', 500);
+        }
+
+        // Timeline
+        async function loadTimeline() {
+            try {
+                const response = await fetch('/api/campaign/timeline');
+                const data = await response.json();
+
+                const container = document.getElementById('timeline-events');
+
+                if (data.events.length === 0) {
+                    container.innerHTML = '<p>No dated events found. Add years (e.g., "Year 450", "1200 AR") to your notes.</p>';
+                    return;
+                }
+
+                container.innerHTML = data.events.slice(0, 50).map(e => `
+                    <div class="timeline-event" onclick="openInObsidian('${e.path}')">
+                        <div class="timeline-year">Year ${e.year}</div>
+                        <div style="font-size: 0.9rem;">${e.context}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${e.file}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading timeline:', e);
+            }
+        }
+
+        // Factions
+        async function loadFactions() {
+            try {
+                const response = await fetch('/api/campaign/factions');
+                const data = await response.json();
+
+                const container = document.getElementById('faction-list');
+
+                if (data.factions.length === 0) {
+                    container.innerHTML = '<p>No factions found. Add files to Database/Kingdoms/ or Database/Factions/ folders.</p>';
+                    return;
+                }
+
+                let html = '<div class="grid">';
+
+                for (const faction of data.factions) {
+                    const rels = data.relationships.filter(r => r.source === faction.name || r.target === faction.name);
+
+                    html += `
+                        <div class="card" onclick="openInObsidian('${faction.path}')">
+                            <h3>${faction.name}</h3>
+                            ${rels.length > 0 ? rels.map(r => {
+                                const other = r.source === faction.name ? r.target : r.source;
+                                return `<span class="badge badge-${r.type}">${r.type}</span> ${other}`;
+                            }).join('<br>') : '<p style="color: var(--text-secondary);">No relationships found</p>'}
+                        </div>
+                    `;
+                }
+
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (e) {
+                console.error('Error loading factions:', e);
+            }
+        }
+
+        // Plot Threads
+        async function loadThreads() {
+            try {
+                const response = await fetch('/api/campaign/threads');
+                const data = await response.json();
+
+                const container = document.getElementById('threads-list');
+
+                if (data.threads.length === 0) {
+                    container.innerHTML = '<p>No unresolved threads found.</p>';
+                    return;
+                }
+
+                container.innerHTML = data.threads.map(t => `
+                    <div class="list-item" onclick="openInObsidian('${t.path}')">
+                        <span class="badge badge-${t.type}">${t.type}</span>
+                        <div class="list-item-title" style="margin-top: 6px;">${t.content}</div>
+                        <div class="list-item-meta">${t.file}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Error loading threads:', e);
+            }
+        }
+
+        // Lore Gaps
+        async function loadGaps() {
+            try {
+                const response = await fetch('/api/campaign/gaps');
+                const data = await response.json();
+
+                const gapsContainer = document.getElementById('gaps-list');
+                const brokenContainer = document.getElementById('broken-links-list');
+
+                // Lore gaps
+                if (data.gaps.length === 0) {
+                    gapsContainer.innerHTML = '<p>No gaps found - your lore is complete!</p>';
+                } else {
+                    gapsContainer.innerHTML = data.gaps.slice(0, 30).map(g => `
+                        <div class="gap-item" onclick="openInObsidian('${g.path}')">
+                            <div class="list-item-title">${g.file}</div>
+                            <div>${g.missing_fields.map(f => `<span class="missing-field">${f}</span>`).join('')}</div>
+                        </div>
+                    `).join('');
+                }
+
+                // Broken links
+                if (data.broken_links.length === 0) {
+                    brokenContainer.innerHTML = '<p>No broken links found!</p>';
+                } else {
+                    brokenContainer.innerHTML = data.broken_links.slice(0, 30).map(b => `
+                        <div class="gap-item broken-link">
+                            <div class="list-item-title">[[${b.link}]]</div>
+                            <div class="list-item-meta">Referenced in: ${b.source_file}</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error('Error loading gaps:', e);
+            }
+        }
+
+        // Writing Tools
+        async function expandDescription() {
+            const notes = document.getElementById('expand-notes').value.trim();
+            if (!notes) return;
+
+            const context = document.getElementById('expand-context').value.trim();
+            const output = document.getElementById('expand-output');
+            output.innerHTML = '<p class="loading">Expanding...</p>';
+
+            await streamToOutput('/api/campaign/expand', { notes, context }, output);
+        }
+
+        async function enrichSensory() {
+            const description = document.getElementById('sensory-input').value.trim();
+            if (!description) return;
+
+            const output = document.getElementById('sensory-output');
+            output.innerHTML = '<p class="loading">Enriching...</p>';
+
+            await streamToOutput('/api/campaign/sensory', { description }, output);
+        }
+
+        async function streamToOutput(url, body, outputEl) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let content = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const text = decoder.decode(value);
+                    for (const line of text.split('\n')) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.chunk) {
+                                    content += data.chunk;
+                                    outputEl.innerHTML = marked.parse(content);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            } catch (e) {
+                outputEl.innerHTML = '<p style="color: var(--danger);">Error: ' + e.message + '</p>';
+            }
+        }
+
+        // Initial load
+        loadOverview();
+    </script>
+</body>
+</html>

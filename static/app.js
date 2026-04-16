@@ -55,6 +55,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Cache DOM elements first
     cacheElements();
 
+    // Load module settings first (affects what's visible)
+    loadModuleSettings();
+
     // Load data in parallel
     Promise.all([
         loadVaultStats(),
@@ -80,6 +83,55 @@ document.addEventListener('DOMContentLoaded', () => {
         breaks: true
     });
 });
+
+// Module Settings
+function loadModuleSettings() {
+    const modules = JSON.parse(localStorage.getItem('aetherion_modules') || '{}');
+
+    // Set defaults if not set
+    const defaults = {
+        worldbuilding: false,
+        campaign: false,
+        character: true
+    };
+
+    Object.keys(defaults).forEach(mod => {
+        if (modules[mod] === undefined) modules[mod] = defaults[mod];
+    });
+
+    // Update checkboxes if they exist
+    Object.keys(modules).forEach(mod => {
+        const checkbox = document.getElementById(`module-${mod}`);
+        if (checkbox) checkbox.checked = modules[mod];
+    });
+
+    // Apply visibility
+    applyModuleVisibility(modules);
+
+    return modules;
+}
+
+function saveModuleSettings() {
+    const modules = {};
+    ['worldbuilding', 'campaign', 'character'].forEach(mod => {
+        const checkbox = document.getElementById(`module-${mod}`);
+        if (checkbox) modules[mod] = checkbox.checked;
+    });
+
+    localStorage.setItem('aetherion_modules', JSON.stringify(modules));
+    applyModuleVisibility(modules);
+}
+
+function applyModuleVisibility(modules) {
+    document.querySelectorAll('[data-module]').forEach(el => {
+        const mod = el.getAttribute('data-module');
+        if (modules[mod] === false) {
+            el.style.display = 'none';
+        } else {
+            el.style.display = '';
+        }
+    });
+}
 
 // Theme functions
 function loadTheme() {

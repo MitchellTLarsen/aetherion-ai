@@ -18,6 +18,7 @@ With RAG: "Tell me about Athamos" → AI reads your notes first, then responds a
 
 ## Features
 
+### Core RAG
 - **Hybrid Search** - Semantic embeddings + keyword matching + cross-encoder reranking
 - **RAG Chat** - AI chat that pulls relevant context from your vault
 - **Streaming Responses** - See text as it generates
@@ -25,9 +26,27 @@ With RAG: "Tell me about Athamos" → AI reads your notes first, then responds a
 - **Context Compression** - Summarizes context to fit more information
 - **Chat History** - Save and load conversation sessions
 - **Obsidian Links** - Clickable links to open sources in Obsidian
-- **Custom Prompts** - Change AI personality per session
-- **Auto-Reindex** - Watch vault for changes
-- **Multiple Providers** - OpenAI GPT and Google Gemini
+- **Multiple Providers** - OpenAI, Gemini, Claude, Ollama, Groq, OpenRouter
+
+### Web Interface
+- **Character Voice Mode** - AI responds as your NPCs with their personality
+- **Auto-Linking** - Convert entity names to [[wiki-links]]
+- **Save to Vault** - Write AI responses as new notes
+- **Relationship Graph** - Interactive D3.js visualization of vault connections
+- **Worldbuilding Hub** - Writing tools for fantasy worldbuilding
+- **Campaign Manager** - Full D&D campaign management with persistent state
+
+### Campaign Manager Features
+- **Initiative Tracker** - Combat turn order with HP, conditions, death saves
+- **Party Roster** - Live HP tracking, conditions, inspiration
+- **Quest Tracker** - Track quests with status and rewards
+- **Session Management** - Create sessions, generate recaps
+- **Resource Tracker** - Spell slots, abilities, long rest
+- **Rumor Board** - Track rumors with true/false/unknown status
+- **Secrets Tracker** - Track story secrets and revelations
+- **In-World Calendar** - Track campaign date, advance time
+- **Generators** - Encounters, loot, weather, shops, names
+- **Random Tables** - Roll on any table in your vault
 
 ## Setup
 
@@ -101,14 +120,95 @@ python cli.py web
 python cli.py web --port 8080  # Custom port
 ```
 
-Features:
-- Dark theme matching AI Studio style
+**Chat Features:**
+- Dark/light theme (LegendKeeper-inspired styling)
 - Streaming responses with markdown rendering
 - Source panel showing context used
 - Token count and cost estimates
-- Quick action buttons
+- Character voice mode (speak as NPCs)
+- Auto-linking entities to wiki-links
+- Save AI responses directly to vault
 - Chat history saved locally
-- Provider switching
+
+**Additional Tools (accessible from sidebar):**
+- **Worldbuilding Hub** (`/worldbuilding`) - Writing tools dashboard
+- **Campaign Manager** (`/campaign`) - Full D&D campaign management
+- **Relationship Graph** (`/graph`) - Interactive D3.js visualization of vault connections
+
+### Worldbuilding Hub
+
+A dedicated dashboard for fantasy writing and worldbuilding:
+
+| Tool | Description |
+|------|-------------|
+| **NPC Cards** | Generate quick-reference cards for NPCs |
+| **Name Generator** | Generate names matching your world's cultures |
+| **Timeline** | View dated events extracted from your notes |
+| **Factions** | Visualize faction relationships |
+| **Plot Threads** | Find unresolved mysteries and prophecies |
+| **Lore Gaps** | Identify missing information and broken links |
+| **Description Expander** | Expand brief notes into vivid prose |
+| **Sensory Enrichment** | Add sensory details to location descriptions |
+
+### Campaign Manager
+
+A comprehensive D&D campaign management tool with persistent state:
+
+**Session Management:**
+- Session log with templated note creation
+- "Previously On..." dramatic recap generator
+- Player-friendly recap generator (spoiler-free)
+- Session prep assistant
+
+**Party & Combat:**
+- Party roster with live HP tracking
+- Condition tracking (Poisoned, Stunned, etc.)
+- Initiative tracker with turn order
+- Combat log
+- Round-based countdown timers
+- Death saves tracking
+- Resource tracker (spell slots, abilities)
+- Inspiration tracker
+
+**Quest & Progression:**
+- Quest tracker with status management
+- XP tracking
+- Milestone tracking
+- Party level management
+
+**Information Tracking:**
+- Rumor board (true/false/unknown status)
+- Secrets tracker (hidden/revealed)
+- Handout log
+- Downtime activity tracker
+- NPC encounter history
+
+**Generators:**
+- Encounter builder (by difficulty/type)
+- Loot generator (by level/context)
+- Weather generator (by season/region)
+- Shop inventory generator
+- Quick name generator
+- Random table roller
+
+**Calendar:**
+- In-world date tracking
+- Advance by day/week/month
+- View dated events from notes
+
+All campaign data persists to `.campaign-data.json` in your vault and syncs across machines.
+
+### Relationship Graph
+
+Interactive visualization of connections between notes:
+
+- Force-directed D3.js graph
+- Filter to show only files (not references)
+- Drill into files to see section-level connections
+- Connection depth controls (+1, +2, +3 relationships)
+- Color-coded by folder/category
+- Click to view file content
+- Optimized for large vaults
 
 ## Commands
 
@@ -302,6 +402,18 @@ python cli.py check "The Athamian Republic was founded by dwarves"
 - Connections to existing elements
 - Suggestions for better fit
 
+## Module System
+
+Features can be toggled on/off in the web interface settings:
+
+| Module | Features |
+|--------|----------|
+| **Worldbuilding Tools** | Worldbuilding Hub, Relationship Graph, NPC Cards, Name Generator, Timeline, Factions, Plot Threads, Lore Gaps, Writing Tools |
+| **Campaign Manager** | Campaign Manager, Session Recap, Consistency Checker, Initiative, Quests, Party, Calendar, Generators |
+| **Character Voice** | Character voice mode (speak as NPCs) |
+
+Settings persist to localStorage.
+
 ## Configuration
 
 Edit `config.py`:
@@ -424,16 +536,41 @@ It's not "confidence" - it's ranking. A 70% result from a small vault might be w
 
 ```
 aetherion-ai/
-├── cli.py           # CLI commands
-├── config.py        # Configuration
-├── embeddings.py    # Indexing & embedding generation
-├── search.py        # Hybrid search + reranking
-├── generate.py      # LLM generation, streaming, history
-├── chroma_db/       # Vector database
-├── chat_history/    # Saved sessions
-├── .env             # API keys
+├── cli.py              # CLI commands
+├── web.py              # Flask web server & API endpoints
+├── config.py           # Configuration
+├── embeddings.py       # Indexing & embedding generation
+├── search.py           # Hybrid search + reranking
+├── generate.py         # LLM generation, streaming, history
+├── features.py         # Advanced features (character voice, campaign management, etc.)
+├── providers.py        # AI provider integrations
+├── costs.py            # Token counting & cost estimation
+├── templates/
+│   ├── index.html      # Main chat interface
+│   ├── graph.html      # Relationship graph visualization
+│   ├── worldbuilding.html  # Worldbuilding hub
+│   └── campaign.html   # Campaign manager
+├── static/
+│   ├── style.css       # Main stylesheet
+│   └── app.js          # Frontend JavaScript
+├── chroma_db/          # Vector database
+├── chat_history/       # Saved sessions
+├── .env                # API keys
 └── requirements.txt
 ```
+
+## Data Storage
+
+Campaign data is stored in your Obsidian vault for portability:
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `.campaign-data.json` | Vault root | Campaign state (party HP, quests, initiative, rumors, secrets, etc.) |
+| `Sessions/*.md` | Vault | Session notes |
+| `Quests/*.md` | Vault | Quest notes |
+| `Party/*.md` | Vault | Player character notes |
+
+This data syncs with your vault (via Obsidian Sync, iCloud, Dropbox, Git, etc.).
 
 ## AI Providers
 
