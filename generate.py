@@ -157,6 +157,139 @@ def compress_context(sources: list[dict], max_chars: int = 8000) -> list[dict]:
     return compressed
 
 
+def smart_select_context(
+    query: str,
+    sources: list[dict],
+    max_tokens: int = 100000,
+    provider: str = "gpt"
+) -> list[dict]:
+    """
+    Use LLM to intelligently select the most relevant context for a query.
+
+    When full vault content exceeds context limits, this function asks the LLM
+    to identify which sources are most relevant for answering the query.
+    """
+    from costs import count_tokens, get_model_for_provider
+
+    model = get_model_for_provider(provider)
+
+    # Calculate current token usage
+    total_content = "\n\n".join(s.get("content", "") for s in sources)
+    current_tokens = count_tokens(total_content, model)
+
+    # Leave room for system prompt, query, and response (~10k tokens)
+    available_tokens = max_tokens - 10000
+
+    if current_tokens <= available_tokens:
+        return sources
+
+    # Build a summary of all sources for the LLM to evaluate
+    source_summaries = []
+    for i, src in enumerate(sources):
+        content = src.get("content", "")
+        # First 200 chars as preview
+        preview = content[:200].replace("\n", " ") + "..." if len(content) > 200 else content.replace("\n", " ")
+        source_summaries.append(f"{i}. [{src.get('path', 'unknown')}]: {preview}")
+
+    summaries_text = "\n".join(source_summaries)
+
+    # Ask LLM to select most relevant sources
+    client = get_openai_client()
+
+    selection_prompt = f"""You are helping select the most relevant documents to answer a user's question.
+
+USER'S QUESTION: {query}
+
+AVAILABLE SOURCES (numbered):
+{summaries_text}
+
+Based on the question, select the source numbers that are MOST LIKELY to contain relevant information.
+Consider:
+- Direct mentions of topics in the question
+- Related concepts that might provide context
+- Background information that would help answer comprehensively
+
+Return ONLY the numbers of the most important sources, separated by commas.
+Select enough sources to answer thoroughly, but prioritize quality over quantity.
+Example response: 0, 3, 5, 12, 15"""
+
+    try:
+        response = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[{"role": "user", "content": selection_prompt}],
+            max_tokens=200
+        )
+
+        selection_text = response.choices[0].message.content.strip()
+
+        # Parse selected indices
+        selected_indices = []
+        for part in selection_text.replace(",", " ").split():
+            try:
+                idx = int(part.strip())
+                if 0 <= idx < len(sources):
+                    selected_indices.append(idx)
+            except ValueError:
+                continue
+
+        if not selected_indices:
+            # Fallback: take first N sources that fit
+            return _fit_sources_to_limit(sources, available_tokens, model)
+
+        # Build selected sources list, checking token limits
+        selected_sources = []
+        used_tokens = 0
+
+        for idx in selected_indices:
+            src = sources[idx]
+            src_tokens = count_tokens(src.get("content", ""), model)
+            if used_tokens + src_tokens <= available_tokens:
+                selected_sources.append(src)
+                used_tokens += src_tokens
+
+        # If we have room, add more sources by relevance order
+        if used_tokens < available_tokens * 0.8:
+            for i, src in enumerate(sources):
+                if i not in selected_indices:
+                    src_tokens = count_tokens(src.get("content", ""), model)
+                    if used_tokens + src_tokens <= available_tokens:
+                        selected_sources.append(src)
+                        used_tokens += src_tokens
+
+        return selected_sources
+
+    except Exception as e:
+        print(f"Smart selection failed: {e}, falling back to truncation")
+        return _fit_sources_to_limit(sources, available_tokens, model)
+
+
+def _fit_sources_to_limit(sources: list[dict], max_tokens: int, model: str) -> list[dict]:
+    """Fit as many sources as possible within token limit."""
+    from costs import count_tokens
+
+    fitted = []
+    used_tokens = 0
+
+    for src in sources:
+        src_tokens = count_tokens(src.get("content", ""), model)
+        if used_tokens + src_tokens <= max_tokens:
+            fitted.append(src)
+            used_tokens += src_tokens
+        else:
+            # Add truncated version of this source
+            remaining_tokens = max_tokens - used_tokens
+            if remaining_tokens > 100:
+                content = src.get("content", "")
+                # Rough truncation (4 chars per token)
+                truncated_content = content[:remaining_tokens * 4] + "\n\n[Content truncated...]"
+                truncated_src = src.copy()
+                truncated_src["content"] = truncated_content
+                fitted.append(truncated_src)
+            break
+
+    return fitted
+
+
 def chat_with_context(
     message: str,
     sources: list[dict],
@@ -451,7 +584,7 @@ def generate_npc(
     provider: str = "gemini"
 ) -> str:
     """Generate an NPC for a location."""
-    prompt = f"""Create a detailed NPC for the world of Aetherion.
+    prompt = f"""Create a detailed NPC for this setting.
 
 Location: {location}
 {"Role: " + role if role else ""}

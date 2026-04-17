@@ -1,5 +1,5 @@
 """
-Advanced features for Aetherion AI.
+Advanced features for Scribe AI.
 
 Features:
 - Auto-linking: Convert entity names to [[wiki-links]]
@@ -7,16 +7,51 @@ Features:
 - Relationship graph: Extract and visualize entity connections
 - Session recap: Generate polished session summaries
 - Consistency checker: Detect contradictions across notes
-- Save to vault: Write AI responses as new notes
+- Campaign management: Initiative, quests, party, calendar, etc.
 """
 
 import re
 import os
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Iterator
 from functools import lru_cache
 
 from config import VAULT_PATH, SYSTEM_PROMPT
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+def iter_vault_files(subpath: str = None, skip_db_files: bool = True) -> Iterator[Path]:
+    """Iterate over markdown files in vault, skipping hidden files."""
+    base = VAULT_PATH / subpath if subpath else VAULT_PATH
+    if not base.exists():
+        return
+    for md_file in base.rglob("*.md"):
+        if any(part.startswith('.') for part in md_file.parts):
+            continue
+        if skip_db_files and md_file.name.endswith("_database.md"):
+            continue
+        yield md_file
+
+
+def read_file_safe(path: Path) -> Optional[str]:
+    """Safely read a file, returning None on error."""
+    try:
+        return path.read_text(encoding='utf-8')
+    except Exception:
+        return None
+
+
+def find_file_by_name(name: str) -> Optional[Path]:
+    """Find a file in vault by name (case-insensitive)."""
+    name_lower = name.lower()
+    for md_file in iter_vault_files():
+        if md_file.stem.lower() == name_lower:
+            return md_file
+    return None
 
 
 # =============================================================================
@@ -25,21 +60,8 @@ from config import VAULT_PATH, SYSTEM_PROMPT
 
 @lru_cache(maxsize=1)
 def get_vault_entities() -> dict:
-    """
-    Extract all entity names from vault filenames.
-    Returns dict mapping lowercase name -> actual filename.
-    """
-    entities = {}
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        # Skip hidden files and folders
-        if any(part.startswith('.') for part in md_file.parts):
-            continue
-
-        name = md_file.stem  # Filename without .md
-        entities[name.lower()] = name
-
-    return entities
+    """Extract all entity names from vault filenames."""
+    return {md_file.stem.lower(): md_file.stem for md_file in iter_vault_files()}
 
 
 def clear_entity_cache():
@@ -473,31 +495,15 @@ def format_session_recap_prompt(raw_notes: str, session_number: Optional[int] = 
 # =============================================================================
 
 def extract_entity_descriptions(entity_name: str) -> list[dict]:
-    """
-    Find all mentions of an entity and extract surrounding context.
-    """
+    """Find all mentions of an entity and extract surrounding context."""
     mentions = []
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    pattern = r'.{0,100}' + re.escape(entity_name) + r'.{0,100}'
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
-
-        try:
-            content = md_file.read_text(encoding='utf-8')
-
-            # Find mentions with context
-            pattern = r'.{0,100}' + re.escape(entity_name) + r'.{0,100}'
-            matches = re.findall(pattern, content, re.IGNORECASE)
-
-            for match in matches:
-                mentions.append({
-                    'file': str(md_file.relative_to(VAULT_PATH)),
-                    'context': match.strip(),
-                    'file_name': md_file.stem
-                })
-        except Exception:
-            continue
-
+        for match in re.findall(pattern, content, re.IGNORECASE):
+            mentions.append({'file': str(md_file.relative_to(VAULT_PATH)), 'context': match.strip(), 'file_name': md_file.stem})
     return mentions
 
 
@@ -547,36 +553,23 @@ def build_consistency_prompt(entity_name: str, mentions: list[dict]) -> str:
 
 
 def get_major_entities(min_mentions: int = 3) -> list[dict]:
-    """
-    Get entities that appear in multiple files (good candidates for consistency check).
-    """
+    """Get entities that appear in multiple files (good candidates for consistency check)."""
     entity_counts = {}
     entities = get_vault_entities()
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
-
-        try:
-            content = md_file.read_text(encoding='utf-8').lower()
-
-            for lower_name, actual_name in entities.items():
-                if len(lower_name) >= 3 and lower_name in content:
-                    if actual_name not in entity_counts:
-                        entity_counts[actual_name] = {'name': actual_name, 'count': 0, 'files': set()}
-                    entity_counts[actual_name]['count'] += content.count(lower_name)
-                    entity_counts[actual_name]['files'].add(md_file.stem)
-        except Exception:
-            continue
-
-    # Filter and sort
-    major = [
-        {'name': e['name'], 'mentions': e['count'], 'files': len(e['files'])}
-        for e in entity_counts.values()
-        if len(e['files']) >= min_mentions
-    ]
-
-    return sorted(major, key=lambda x: x['files'], reverse=True)
+        content_lower = content.lower()
+        for lower_name, actual_name in entities.items():
+            if len(lower_name) >= 3 and lower_name in content_lower:
+                if actual_name not in entity_counts:
+                    entity_counts[actual_name] = {'name': actual_name, 'count': 0, 'files': set()}
+                entity_counts[actual_name]['count'] += content_lower.count(lower_name)
+                entity_counts[actual_name]['files'].add(md_file.stem)
+    return sorted([{'name': e['name'], 'mentions': e['count'], 'files': len(e['files'])}
+                   for e in entity_counts.values() if len(e['files']) >= min_mentions],
+                  key=lambda x: x['files'], reverse=True)
 
 
 # =============================================================================
@@ -750,17 +743,11 @@ Keep each section brief and table-ready. Focus on what's useful during play."""
 
 def get_npc_for_card(name: str) -> Optional[dict]:
     """Get NPC content for generating a quick card."""
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if md_file.stem.lower() == name.lower():
-            try:
-                content = md_file.read_text(encoding='utf-8')
-                return {
-                    "name": md_file.stem,
-                    "path": str(md_file.relative_to(VAULT_PATH)),
-                    "content": content
-                }
-            except Exception:
-                pass
+    md_file = find_file_by_name(name)
+    if md_file:
+        content = read_file_safe(md_file)
+        if content:
+            return {"name": md_file.stem, "path": str(md_file.relative_to(VAULT_PATH)), "content": content}
     return None
 
 
@@ -776,33 +763,13 @@ def build_npc_card_prompt(name: str, content: str) -> str:
 def analyze_naming_patterns() -> dict:
     """Analyze naming conventions from existing entities grouped by kingdom/culture."""
     from collections import defaultdict
-
     patterns = defaultdict(list)
-
-    # Look in character and ruler folders
-    search_paths = [
-        VAULT_PATH / "Database" / "Characters",
-        VAULT_PATH / "Database" / "Rulers",
-        VAULT_PATH / "Database" / "Kingdoms",
-    ]
-
-    for base_path in search_paths:
-        if not base_path.exists():
-            continue
-
-        for md_file in base_path.rglob("*.md"):
-            if md_file.name.endswith("_database.md"):
-                continue
-
-            # Get culture/kingdom from folder structure
-            relative = md_file.relative_to(base_path)
-            if len(relative.parts) > 1:
-                culture = relative.parts[0]
-            else:
-                culture = "General"
-
+    for subpath in ["Database/Characters", "Database/Rulers", "Database/Kingdoms"]:
+        base = VAULT_PATH / subpath
+        for md_file in iter_vault_files(subpath):
+            relative = md_file.relative_to(base)
+            culture = relative.parts[0] if len(relative.parts) > 1 else "General"
             patterns[culture].append(md_file.stem)
-
     return dict(patterns)
 
 
@@ -836,40 +803,25 @@ def build_name_generator_prompt(culture: str, examples: list[str], count: int = 
 def extract_timeline_events() -> list[dict]:
     """Extract events with dates/years from vault notes."""
     events = []
-
-    # Patterns for finding dates/years
     date_patterns = [
-        r'(\d{1,4})\s*(?:AR|BR|AE|BE|Year)',  # Year with era marker
-        r'(?:Year|year)\s*(\d{1,4})',  # Year X
-        r'(\d{1,4})\s*years?\s*(?:ago|before|after)',  # X years ago
+        r'(\d{1,4})\s*(?:AR|BR|AE|BE|Year)',
+        r'(?:Year|year)\s*(\d{1,4})',
+        r'(\d{1,4})\s*years?\s*(?:ago|before|after)',
     ]
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
-
-        try:
-            content = md_file.read_text(encoding='utf-8')
-
-            for pattern in date_patterns:
-                for match in re.finditer(pattern, content, re.IGNORECASE):
-                    # Get surrounding context
-                    start = max(0, match.start() - 100)
-                    end = min(len(content), match.end() + 100)
-                    context = content[start:end].strip()
-
-                    events.append({
-                        "year": match.group(1),
-                        "context": context,
-                        "file": md_file.stem,
-                        "path": str(md_file.relative_to(VAULT_PATH))
-                    })
-        except Exception:
-            continue
-
-    # Sort by year
+        for pattern in date_patterns:
+            for match in re.finditer(pattern, content, re.IGNORECASE):
+                start, end = max(0, match.start() - 100), min(len(content), match.end() + 100)
+                events.append({
+                    "year": match.group(1),
+                    "context": content[start:end].strip(),
+                    "file": md_file.stem,
+                    "path": str(md_file.relative_to(VAULT_PATH))
+                })
     events.sort(key=lambda e: int(e["year"]) if e["year"].isdigit() else 0)
-
     return events
 
 
@@ -958,50 +910,24 @@ def extract_faction_relationships() -> dict:
 def find_unresolved_threads() -> list[dict]:
     """Find prophecies, mysteries, and unresolved plot threads."""
     threads = []
+    keywords = [r'prophecy|prophecies|foretold|destined', r'mystery|mysterious|unknown|unexplained',
+                r'secret|secrets|hidden|concealed', r'missing|disappeared|vanished|lost',
+                r'unresolved|unanswered|unclear', r'rumor|rumors|legend|legends', r'foreshadow|hint|clue', r'\?\s*$']
+    pattern = '|'.join(f'({kw})' for kw in keywords)
 
-    # Keywords that suggest unresolved elements
-    mystery_keywords = [
-        r'prophecy|prophecies|foretold|destined',
-        r'mystery|mysterious|unknown|unexplained',
-        r'secret|secrets|hidden|concealed',
-        r'missing|disappeared|vanished|lost',
-        r'unresolved|unanswered|unclear',
-        r'rumor|rumors|legend|legends',
-        r'foreshadow|hint|clue',
-        r'\?\s*$',  # Questions at end of lines
-    ]
-
-    combined_pattern = '|'.join(f'({kw})' for kw in mystery_keywords)
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
-
-        try:
-            content = md_file.read_text(encoding='utf-8')
-
-            for match in re.finditer(combined_pattern, content, re.IGNORECASE | re.MULTILINE):
-                # Get the full line/sentence
-                start = content.rfind('\n', 0, match.start()) + 1
-                end = content.find('\n', match.end())
-                if end == -1:
-                    end = len(content)
-
-                line = content[start:end].strip()
-                if len(line) > 20:  # Skip very short matches
-                    threads.append({
-                        "type": "mystery" if "mystery" in match.group().lower() else
-                               "prophecy" if "prophe" in match.group().lower() else
-                               "secret" if "secret" in match.group().lower() else
-                               "question" if "?" in match.group() else "thread",
-                        "content": line[:200],
-                        "file": md_file.stem,
-                        "path": str(md_file.relative_to(VAULT_PATH))
-                    })
-        except Exception:
-            continue
-
-    return threads[:100]  # Limit results
+        for match in re.finditer(pattern, content, re.IGNORECASE | re.MULTILINE):
+            start = content.rfind('\n', 0, match.start()) + 1
+            end = content.find('\n', match.end())
+            line = content[start:end if end != -1 else len(content)].strip()
+            if len(line) > 20:
+                m = match.group().lower()
+                thread_type = "mystery" if "mystery" in m else "prophecy" if "prophe" in m else "secret" if "secret" in m else "question" if "?" in m else "thread"
+                threads.append({"type": thread_type, "content": line[:200], "file": md_file.stem, "path": str(md_file.relative_to(VAULT_PATH))})
+    return threads[:100]
 
 
 # =============================================================================
@@ -1011,96 +937,48 @@ def find_unresolved_threads() -> list[dict]:
 def find_lore_gaps() -> list[dict]:
     """Identify missing information in worldbuilding."""
     gaps = []
-
-    # Check for common missing fields in structured notes
     expected_fields = {
         "character": ["Age", "Race", "Occupation", "Location", "Relationships", "Background"],
         "location": ["Region", "Population", "Government", "Economy", "History"],
         "faction": ["Leader", "Goals", "Members", "Allies", "Enemies", "History"],
     }
+    placeholders = [r'TODO', r'TBD', r'FIXME', r'\[.*?\?\]', r'unknown', r'needs work', r'expand later']
 
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
+        path_lower = str(md_file.relative_to(VAULT_PATH)).lower()
+        rel_path = str(md_file.relative_to(VAULT_PATH))
 
-        try:
-            content = md_file.read_text(encoding='utf-8')
-            relative_path = str(md_file.relative_to(VAULT_PATH)).lower()
+        # Determine note type and check for missing fields
+        note_type = "character" if any(k in path_lower for k in ["character", "npc", "ruler"]) else \
+                    "location" if any(k in path_lower for k in ["location", "place", "point"]) else \
+                    "faction" if any(k in path_lower for k in ["faction", "kingdom"]) else None
+        if note_type and note_type in expected_fields:
+            missing = [f for f in expected_fields[note_type] if f.lower() not in content.lower()]
+            if missing:
+                gaps.append({"file": md_file.stem, "path": rel_path, "type": note_type, "missing_fields": missing})
 
-            # Determine note type
-            note_type = None
-            if "character" in relative_path or "npc" in relative_path or "ruler" in relative_path:
-                note_type = "character"
-            elif "location" in relative_path or "place" in relative_path or "point" in relative_path:
-                note_type = "location"
-            elif "faction" in relative_path or "kingdom" in relative_path:
-                note_type = "faction"
-
-            if note_type and note_type in expected_fields:
-                missing = []
-                for field in expected_fields[note_type]:
-                    if field.lower() not in content.lower():
-                        missing.append(field)
-
-                if missing:
-                    gaps.append({
-                        "file": md_file.stem,
-                        "path": str(md_file.relative_to(VAULT_PATH)),
-                        "type": note_type,
-                        "missing_fields": missing
-                    })
-
-            # Check for placeholder text
-            placeholder_patterns = [
-                r'TODO',
-                r'TBD',
-                r'FIXME',
-                r'\[.*?\?\]',
-                r'unknown',
-                r'needs work',
-                r'expand later',
-            ]
-
-            for pattern in placeholder_patterns:
-                if re.search(pattern, content, re.IGNORECASE):
-                    gaps.append({
-                        "file": md_file.stem,
-                        "path": str(md_file.relative_to(VAULT_PATH)),
-                        "type": "placeholder",
-                        "missing_fields": [f"Contains '{pattern}' placeholder"]
-                    })
-                    break
-
-        except Exception:
-            continue
-
+        # Check for placeholders
+        for pattern in placeholders:
+            if re.search(pattern, content, re.IGNORECASE):
+                gaps.append({"file": md_file.stem, "path": rel_path, "type": "placeholder", "missing_fields": [f"Contains '{pattern}'"]})
+                break
     return gaps
 
 
-# Check for orphan references (links to non-existent files)
 def find_broken_links() -> list[dict]:
     """Find wiki-links that point to non-existent files."""
     entities = get_vault_entities()
     broken = []
-
-    for md_file in VAULT_PATH.rglob("*.md"):
-        if any(part.startswith('.') for part in md_file.parts):
+    for md_file in iter_vault_files():
+        content = read_file_safe(md_file)
+        if not content:
             continue
-
-        try:
-            content = md_file.read_text(encoding='utf-8')
-            links = re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', content)
-
-            for link in links:
-                if link.lower() not in entities:
-                    broken.append({
-                        "link": link,
-                        "source_file": md_file.stem,
-                        "source_path": str(md_file.relative_to(VAULT_PATH))
-                    })
-        except Exception:
-            continue
-
+        for link in re.findall(r'\[\[([^\]|]+)(?:\|[^\]]+)?\]\]', content):
+            if link.lower() not in entities:
+                broken.append({"link": link, "source_file": md_file.stem, "source_path": str(md_file.relative_to(VAULT_PATH))})
     return broken
 
 
@@ -1218,7 +1096,6 @@ def get_campaign_data() -> dict:
         return default_data
 
     try:
-        import json
         data = json.loads(CAMPAIGN_DATA_FILE.read_text(encoding='utf-8'))
         # Merge with defaults for any missing keys
         for key, value in default_data.items():
@@ -1231,7 +1108,6 @@ def get_campaign_data() -> dict:
 
 def save_campaign_data(data: dict) -> dict:
     """Save campaign state to vault JSON file."""
-    import json
     try:
         CAMPAIGN_DATA_FILE.write_text(
             json.dumps(data, indent=2, ensure_ascii=False),

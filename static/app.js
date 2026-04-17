@@ -1,5 +1,5 @@
 /**
- * Aetherion AI - Web Interface JavaScript
+ * Scribe AI - Web Interface JavaScript
  */
 
 // State
@@ -8,11 +8,16 @@ let state = {
     sources: [],
     history: [],
     provider: 'gpt',
+    model: 'gpt-5.4-nano',  // Current model selection
     contextSize: 20,
     isLoading: false,
     currentStreamController: null,
     pendingMessage: null,
     costEstimate: null,
+    activeModules: [],  // Active modules for context-aware prompts
+    customPrompt: '',   // User's custom prompt extension
+    fullVault: false,   // Use full vault context instead of RAG
+    fullVaultCache: null, // Cached full vault content
     sessionCost: {
         inputTokens: 0,
         outputTokens: 0,
@@ -24,7 +29,7 @@ let state = {
 const elements = {};
 const elementIds = [
     'welcome-screen', 'chat-container', 'messages', 'message-input', 'send-btn',
-    'provider-select', 'deep-search', 'show-sources', 'confirm-send', 'cost-estimate',
+    'provider-select', 'model-select', 'deep-search', 'full-vault', 'show-sources', 'confirm-send', 'cost-estimate',
     'sources-panel', 'sources-list', 'vault-stats', 'chat-history', 'settings-modal',
     'confirm-panel', 'confirm-message', 'confirm-sources', 'source-count',
     'cost-input-tokens', 'cost-output-tokens', 'cost-total'
@@ -68,6 +73,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupInputHandlers();
     loadHistory();
     loadTheme();
+    loadFullVaultSetting();
+    loadModelSetting();
 
     // Initialize character state
     state.character = '';
@@ -85,52 +92,120 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Module Settings
+const AI_MODE_DESCRIPTIONS = {
+    'generic': 'Balanced assistant for any knowledge work',
+    'academic': 'Focused on research, citations, and structured writing',
+    'fiction': 'Focused on narrative, characters, and story development',
+    'technical': 'Focused on clear documentation, code examples, and precision',
+    'journaling': 'Reflective, personal, helps with self-discovery and organization',
+    'custom': 'Your custom instructions'
+};
+
 function loadModuleSettings() {
-    const modules = JSON.parse(localStorage.getItem('aetherion_modules') || '{}');
+    const settings = JSON.parse(localStorage.getItem('aetherion_modules') || '{}');
 
-    // Set defaults if not set
-    const defaults = {
-        worldbuilding: false,
-        campaign: false,
-        character: true
-    };
+    // Migrate old settings: if user had worldbuilding/campaign/character enabled, enable fantasy
+    if (settings.fantasy === undefined) {
+        if (settings.worldbuilding || settings.campaign || settings.character) {
+            settings.fantasy = true;
+            // Clean up old keys
+            delete settings.worldbuilding;
+            delete settings.campaign;
+            delete settings.character;
+        }
+    }
 
-    Object.keys(defaults).forEach(mod => {
-        if (modules[mod] === undefined) modules[mod] = defaults[mod];
-    });
+    // Set defaults
+    if (settings.fantasy === undefined) settings.fantasy = false;
+    if (settings.aiMode === undefined) settings.aiMode = 'generic';
+    if (settings.customPrompt === undefined) settings.customPrompt = '';
 
-    // Update checkboxes if they exist
-    Object.keys(modules).forEach(mod => {
-        const checkbox = document.getElementById(`module-${mod}`);
-        if (checkbox) checkbox.checked = modules[mod];
-    });
+    // Update UI
+    const fantasyCheckbox = document.getElementById('module-fantasy');
+    if (fantasyCheckbox) fantasyCheckbox.checked = settings.fantasy;
+
+    const aiModeSelect = document.getElementById('ai-mode');
+    if (aiModeSelect) {
+        aiModeSelect.value = settings.aiMode;
+        updateAiModeDescription(settings.aiMode);
+    }
+
+    const customPromptEl = document.getElementById('custom-prompt');
+    if (customPromptEl) customPromptEl.value = settings.customPrompt;
+
+    // Show/hide custom prompt section
+    toggleCustomPromptSection(settings.aiMode === 'custom');
 
     // Apply visibility
-    applyModuleVisibility(modules);
+    applyModuleVisibility(settings);
 
-    return modules;
+    // Store active modules in state for API calls
+    updateActiveModules(settings);
+
+    localStorage.setItem('aetherion_modules', JSON.stringify(settings));
+    return settings;
 }
 
 function saveModuleSettings() {
-    const modules = {};
-    ['worldbuilding', 'campaign', 'character'].forEach(mod => {
-        const checkbox = document.getElementById(`module-${mod}`);
-        if (checkbox) modules[mod] = checkbox.checked;
-    });
+    const settings = {
+        fantasy: document.getElementById('module-fantasy')?.checked || false,
+        aiMode: document.getElementById('ai-mode')?.value || 'generic',
+        customPrompt: document.getElementById('custom-prompt')?.value || ''
+    };
 
-    localStorage.setItem('aetherion_modules', JSON.stringify(modules));
-    applyModuleVisibility(modules);
+    localStorage.setItem('aetherion_modules', JSON.stringify(settings));
+    applyModuleVisibility(settings);
+    updateActiveModules(settings);
+    updateAiModeDescription(settings.aiMode);
 }
 
-function applyModuleVisibility(modules) {
+function onAiModeChange() {
+    const mode = document.getElementById('ai-mode')?.value || 'generic';
+    toggleCustomPromptSection(mode === 'custom');
+    saveModuleSettings();
+}
+
+function toggleCustomPromptSection(show) {
+    const section = document.getElementById('custom-prompt-section');
+    if (section) {
+        section.classList.toggle('hidden', !show);
+    }
+}
+
+function updateActiveModules(settings) {
+    // Build list of active modules for API
+    state.activeModules = [];
+    if (settings.fantasy) state.activeModules.push('fantasy');
+    if (settings.aiMode && settings.aiMode !== 'generic') {
+        state.activeModules.push(settings.aiMode);
+    }
+    // Store custom prompt separately in state
+    state.customPrompt = settings.aiMode === 'custom' ? settings.customPrompt : '';
+}
+
+function updateAiModeDescription(mode) {
+    const descEl = document.getElementById('ai-mode-description');
+    if (descEl) {
+        descEl.textContent = AI_MODE_DESCRIPTIONS[mode] || AI_MODE_DESCRIPTIONS['generic'];
+    }
+}
+
+function applyModuleVisibility(settings) {
+    // Hide/show sidebar sections based on fantasy module
     document.querySelectorAll('[data-module]').forEach(el => {
         const mod = el.getAttribute('data-module');
-        if (modules[mod] === false) {
+        if (mod === 'fantasy' && !settings.fantasy) {
             el.style.display = 'none';
         } else {
             el.style.display = '';
         }
     });
+
+    // Show/hide fantasy quick actions
+    const fantasyActions = document.getElementById('fantasy-quick-actions');
+    if (fantasyActions) {
+        fantasyActions.classList.toggle('hidden', !settings.fantasy);
+    }
 }
 
 // Theme functions
@@ -164,6 +239,11 @@ function setTheme(theme) {
 
 // API Functions
 async function fetchSources(query) {
+    // Full vault mode: return all vault content instead of RAG search
+    if (state.fullVault) {
+        return await fetchFullVault();
+    }
+
     const response = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,6 +255,57 @@ async function fetchSources(query) {
     });
     const data = await response.json();
     return data.sources;
+}
+
+async function fetchFullVault() {
+    // Return cached if available
+    if (state.fullVaultCache) {
+        return state.fullVaultCache;
+    }
+
+    const response = await fetch('/api/vault/full');
+    const data = await response.json();
+
+    if (data.truncated) {
+        console.warn('Full vault content was truncated due to size limits');
+    }
+
+    // Cache the result
+    state.fullVaultCache = data.sources;
+    return data.sources;
+}
+
+function toggleFullVault() {
+    const checkbox = document.getElementById('full-vault');
+    state.fullVault = checkbox.checked;
+
+    // Disable deep search when full vault is enabled (they're mutually exclusive)
+    if (state.fullVault) {
+        elements.deepSearch.checked = false;
+        elements.deepSearch.disabled = true;
+    } else {
+        elements.deepSearch.disabled = false;
+        // Clear cache when turning off
+        state.fullVaultCache = null;
+    }
+
+    // Save preference
+    localStorage.setItem('scribe_full_vault', state.fullVault);
+}
+
+function loadFullVaultSetting() {
+    const saved = localStorage.getItem('scribe_full_vault') === 'true';
+    if (elements.fullVault) {
+        elements.fullVault.checked = saved;
+        state.fullVault = saved;
+        if (saved && elements.deepSearch) {
+            elements.deepSearch.disabled = true;
+        }
+    }
+}
+
+function clearFullVaultCache() {
+    state.fullVaultCache = null;
 }
 
 async function estimateCost(message) {
@@ -206,9 +337,12 @@ async function countOutputTokens(text) {
 }
 
 function getModelForProvider(provider) {
+    // For GPT, use the selected model from dropdown
+    if (provider === 'gpt' || provider === 'openai') {
+        return state.model || 'gpt-5.4-nano';
+    }
+
     const models = {
-        'gpt': 'gpt-5-nano',
-        'openai': 'gpt-5-nano',
         'gemini': 'gemini-2.5-flash-lite',
         'anthropic': 'claude-sonnet-4-20250514',
         'claude': 'claude-sonnet-4-20250514',
@@ -216,7 +350,7 @@ function getModelForProvider(provider) {
         'groq': 'llama-3.3-70b-versatile',
         'openrouter': 'anthropic/claude-3.5-sonnet'
     };
-    return models[provider] || 'gpt-5-nano';
+    return models[provider] || 'gpt-5.4-nano';
 }
 
 function updateSessionCost(inputTokens, outputTokens, cost, isFree) {
@@ -247,7 +381,10 @@ async function streamChat(message, sources) {
             message,
             history: state.history,
             sources,
-            provider: state.provider
+            provider: state.provider,
+            modules: state.activeModules || [],
+            customPrompt: state.customPrompt || '',
+            fullVault: state.fullVault || false
         })
     });
 
@@ -268,6 +405,11 @@ async function streamChat(message, sources) {
                         try {
                             const data = JSON.parse(line.slice(6));
                             if (data.chunk) yield data.chunk;
+                            if (data.info) {
+                                // Show info message (e.g., context was compressed)
+                                console.log('Info:', data.info);
+                                showNotification(data.info, 'info');
+                            }
                             if (data.done) return;
                             if (data.error) throw new Error(data.error);
                         } catch (e) {
@@ -278,6 +420,20 @@ async function streamChat(message, sources) {
             }
         }
     };
+}
+
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => notification.remove(), 300);
+    }, 4000);
 }
 
 // UI Functions
@@ -323,7 +479,7 @@ async function prepareMessage() {
     elements.sendBtn.disabled = true;
 
     // Show loading in button area
-    elements.costEstimate.textContent = 'Searching vault...';
+    elements.costEstimate.textContent = state.fullVault ? 'Loading full vault...' : 'Searching vault...';
 
     try {
         // Fetch sources
@@ -528,7 +684,7 @@ function addMessage(role, content, isStreaming = false) {
     messageEl.className = `message ${role}`;
 
     const avatar = role === 'user' ? 'Y' : 'A';
-    const author = role === 'user' ? 'You' : 'Aetherion';
+    const author = role === 'user' ? 'You' : 'Scribe';
 
     messageEl.innerHTML = `
         <div class="message-avatar">${avatar}</div>
@@ -670,13 +826,38 @@ function toggleSourcesPanel() {
 
 async function openSource(path) {
     // Try to open in Obsidian
-    const obsidianUrl = `obsidian://open?vault=Aetherion&file=${encodeURIComponent(path)}`;
+    const vaultName = state.vaultName || 'MyVault';
+    const obsidianUrl = `obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(path)}`;
     window.open(obsidianUrl, '_blank');
 }
 
 // Provider functions
 function updateProvider() {
     state.provider = elements.providerSelect.value;
+
+    // Show model selector only for GPT provider
+    if (elements.modelSelect) {
+        elements.modelSelect.style.display = state.provider === 'gpt' ? 'block' : 'none';
+    }
+}
+
+function updateModel() {
+    if (elements.modelSelect) {
+        state.model = elements.modelSelect.value;
+        localStorage.setItem('scribe_model', state.model);
+    }
+}
+
+function loadModelSetting() {
+    const saved = localStorage.getItem('scribe_model');
+    if (saved && elements.modelSelect) {
+        // Check if the saved model exists in options
+        const options = Array.from(elements.modelSelect.options);
+        if (options.some(opt => opt.value === saved)) {
+            elements.modelSelect.value = saved;
+            state.model = saved;
+        }
+    }
 }
 
 async function loadProviders() {
@@ -706,6 +887,9 @@ async function loadVaultStats() {
     try {
         const response = await fetch('/api/stats');
         const stats = await response.json();
+
+        // Store vault name for obsidian:// links
+        state.vaultName = stats.vault_name || 'MyVault';
 
         elements.vaultStats.innerHTML = `
             <span class="stat-item">${stats.total_files} files indexed</span>
@@ -823,7 +1007,7 @@ async function loadCharacters() {
 
 function renderCharacterSelect(characters) {
     const select = document.getElementById('character-select');
-    select.innerHTML = '<option value="">Speak as Aetherion</option>';
+    select.innerHTML = '<option value="">Speak as Scribe</option>';
 
     // Group by kingdom
     const grouped = {};
@@ -889,7 +1073,7 @@ function updateCharacter() {
     if (state.character) {
         elements.messageInput.placeholder = `Speak to ${state.character}...`;
     } else {
-        elements.messageInput.placeholder = 'Ask about your world...';
+        elements.messageInput.placeholder = 'Ask anything...';
     }
 }
 
@@ -1307,3 +1491,763 @@ addMessage = function(role, content, isStreaming = false) {
 };
 
 // Load characters function is called in main init
+
+// =============================================================================
+// MANUAL SOURCE SELECTION
+// =============================================================================
+
+// Pinned sources state
+let pinnedSources = [];
+let allVaultNotes = [];
+let pendingUrlSource = null;
+let pendingFileSource = null;
+
+function openSourcePicker() {
+    document.getElementById('source-picker-modal').classList.remove('hidden');
+    loadVaultNotes();
+}
+
+function closeSourcePicker() {
+    document.getElementById('source-picker-modal').classList.add('hidden');
+}
+
+function switchSourceTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.source-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
+
+    // Update tab content
+    document.querySelectorAll('.source-tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `source-tab-${tab}`);
+    });
+}
+
+// Vault Notes
+async function loadVaultNotes() {
+    try {
+        const response = await fetch('/api/vault/notes');
+        const data = await response.json();
+        allVaultNotes = data.notes;
+        renderVaultNotes(allVaultNotes);
+    } catch (e) {
+        console.error('Error loading vault notes:', e);
+        document.getElementById('vault-notes-list').innerHTML = '<div class="error">Failed to load notes</div>';
+    }
+}
+
+function renderVaultNotes(notes) {
+    const container = document.getElementById('vault-notes-list');
+
+    if (notes.length === 0) {
+        container.innerHTML = '<div class="empty-state">No notes found</div>';
+        return;
+    }
+
+    // Group by folder
+    const grouped = {};
+    notes.forEach(note => {
+        const folder = note.folder || 'Root';
+        if (!grouped[folder]) grouped[folder] = [];
+        grouped[folder].push(note);
+    });
+
+    const fragment = document.createDocumentFragment();
+
+    Object.keys(grouped).sort().forEach(folder => {
+        const folderEl = document.createElement('div');
+        folderEl.className = 'vault-folder';
+
+        const headerEl = document.createElement('div');
+        headerEl.className = 'vault-folder-header';
+        headerEl.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+            ${folder}
+        `;
+        headerEl.onclick = () => folderEl.classList.toggle('collapsed');
+        folderEl.appendChild(headerEl);
+
+        const notesEl = document.createElement('div');
+        notesEl.className = 'vault-folder-notes';
+
+        grouped[folder].forEach(note => {
+            const isPinned = pinnedSources.some(s => s.path === note.path && s.type === 'vault');
+
+            const noteEl = document.createElement('div');
+            noteEl.className = `vault-note-item ${isPinned ? 'pinned' : ''}`;
+            noteEl.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <path d="M14 2v6h6"/>
+                </svg>
+                <span class="vault-note-name">${note.name}</span>
+                ${isPinned ? '<span class="pinned-badge">Pinned</span>' : ''}
+            `;
+            noteEl.onclick = () => toggleVaultNote(note);
+            notesEl.appendChild(noteEl);
+        });
+
+        folderEl.appendChild(notesEl);
+        fragment.appendChild(folderEl);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(fragment);
+}
+
+function filterVaultNotes() {
+    const query = document.getElementById('vault-note-search').value.toLowerCase().trim();
+
+    if (!query) {
+        renderVaultNotes(allVaultNotes);
+        return;
+    }
+
+    const filtered = allVaultNotes.filter(note =>
+        note.name.toLowerCase().includes(query) ||
+        note.folder.toLowerCase().includes(query)
+    );
+
+    renderVaultNotes(filtered);
+}
+
+async function toggleVaultNote(note) {
+    const existingIndex = pinnedSources.findIndex(s => s.path === note.path && s.type === 'vault');
+
+    if (existingIndex >= 0) {
+        // Remove from pinned
+        pinnedSources.splice(existingIndex, 1);
+    } else {
+        // Fetch full content and add to pinned
+        try {
+            const response = await fetch('/api/vault/note', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: note.path })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+
+            pinnedSources.push({
+                path: note.path,
+                name: note.name,
+                content: data.content,
+                type: 'vault',
+                score: 100
+            });
+        } catch (e) {
+            alert('Failed to load note: ' + e.message);
+            return;
+        }
+    }
+
+    renderVaultNotes(allVaultNotes.filter(n => {
+        const query = document.getElementById('vault-note-search').value.toLowerCase().trim();
+        if (!query) return true;
+        return n.name.toLowerCase().includes(query) || n.folder.toLowerCase().includes(query);
+    }));
+    updatePinnedSourcesDisplay();
+}
+
+// URL Fetching
+async function fetchUrlSource() {
+    const urlInput = document.getElementById('source-url-input');
+    const url = urlInput.value.trim();
+
+    if (!url) {
+        alert('Please enter a URL');
+        return;
+    }
+
+    const preview = document.getElementById('url-preview');
+    const titleEl = document.getElementById('url-preview-title');
+    const contentEl = document.getElementById('url-preview-content');
+
+    preview.classList.remove('hidden');
+    titleEl.textContent = 'Fetching...';
+    contentEl.innerHTML = '<div class="loading-indicator">Loading page content...</div>';
+
+    try {
+        const response = await fetch('/api/fetch-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            titleEl.textContent = 'Error';
+            contentEl.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+
+        pendingUrlSource = data;
+        titleEl.textContent = data.title;
+        contentEl.textContent = data.content.substring(0, 1000) + (data.content.length > 1000 ? '...' : '');
+    } catch (e) {
+        titleEl.textContent = 'Error';
+        contentEl.innerHTML = `<div class="error">Failed to fetch URL: ${e.message}</div>`;
+    }
+}
+
+function addUrlToPinned() {
+    if (!pendingUrlSource) return;
+
+    // Check if already pinned
+    if (pinnedSources.some(s => s.path === pendingUrlSource.url && s.type === 'url')) {
+        alert('This URL is already pinned');
+        return;
+    }
+
+    pinnedSources.push({
+        path: pendingUrlSource.url,
+        name: pendingUrlSource.title,
+        content: pendingUrlSource.content,
+        type: 'url',
+        score: 100
+    });
+
+    updatePinnedSourcesDisplay();
+    document.getElementById('source-url-input').value = '';
+    document.getElementById('url-preview').classList.add('hidden');
+    pendingUrlSource = null;
+
+    // Show success
+    alert('URL added to sources!');
+}
+
+// File Upload
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const preview = document.getElementById('file-preview');
+    const nameEl = document.getElementById('file-preview-name');
+    const contentEl = document.getElementById('file-preview-content');
+
+    preview.classList.remove('hidden');
+    nameEl.textContent = file.name;
+    contentEl.innerHTML = '<div class="loading-indicator">Processing file...</div>';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch('/api/upload-source', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            contentEl.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+
+        pendingFileSource = data;
+
+        if (data.type === 'image') {
+            contentEl.innerHTML = `<img src="data:${data.mime_type};base64,${data.content}" alt="${data.name}" style="max-width: 100%; max-height: 200px;">`;
+        } else {
+            contentEl.textContent = data.content.substring(0, 1000) + (data.content.length > 1000 ? '...' : '');
+        }
+    })
+    .catch(e => {
+        contentEl.innerHTML = `<div class="error">Failed to process file: ${e.message}</div>`;
+    });
+}
+
+function addFileToPinned() {
+    if (!pendingFileSource) return;
+
+    // Check if already pinned
+    if (pinnedSources.some(s => s.name === pendingFileSource.name && s.type === 'file')) {
+        alert('This file is already pinned');
+        return;
+    }
+
+    pinnedSources.push({
+        path: pendingFileSource.name,
+        name: pendingFileSource.name,
+        content: pendingFileSource.content,
+        type: pendingFileSource.type,
+        mime_type: pendingFileSource.mime_type,
+        score: 100
+    });
+
+    updatePinnedSourcesDisplay();
+    document.getElementById('file-preview').classList.add('hidden');
+    document.getElementById('file-upload-input').value = '';
+    pendingFileSource = null;
+
+    alert('File added to sources!');
+}
+
+// Drag and drop for file upload (in modal)
+document.addEventListener('DOMContentLoaded', () => {
+    const dropZone = document.getElementById('file-drop-zone');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('file-upload-input').files = files;
+                handleFileUpload({ target: { files } });
+            }
+        });
+    }
+
+    // Global drag and drop into chat area
+    setupChatDragDrop();
+});
+
+// Global drag and drop into chat
+function setupChatDragDrop() {
+    const mainContent = document.querySelector('.main-content');
+    if (!mainContent) return;
+
+    let dropIndicator = null;
+
+    mainContent.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        if (!dropIndicator) {
+            dropIndicator = document.createElement('div');
+            dropIndicator.className = 'drop-indicator';
+            dropIndicator.innerHTML = `
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
+                </svg>
+                <p>Drop files or URLs to add as sources</p>
+            `;
+            document.body.appendChild(dropIndicator);
+        }
+        mainContent.classList.add('drag-over');
+    });
+
+    mainContent.addEventListener('dragover', (e) => {
+        e.preventDefault();
+    });
+
+    mainContent.addEventListener('dragleave', (e) => {
+        // Only hide if leaving main content entirely
+        if (!mainContent.contains(e.relatedTarget)) {
+            mainContent.classList.remove('drag-over');
+            if (dropIndicator) {
+                dropIndicator.remove();
+                dropIndicator = null;
+            }
+        }
+    });
+
+    mainContent.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        mainContent.classList.remove('drag-over');
+        if (dropIndicator) {
+            dropIndicator.remove();
+            dropIndicator = null;
+        }
+
+        // Handle dropped files
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            for (const file of files) {
+                await processDroppedFile(file);
+            }
+            return;
+        }
+
+        // Handle dropped URLs/text
+        const text = e.dataTransfer.getData('text');
+        if (text) {
+            // Check if it's a URL
+            if (text.match(/^https?:\/\//i) || text.match(/^www\./i)) {
+                await processDroppedUrl(text);
+            } else {
+                // Treat as text content
+                pinnedSources.push({
+                    path: 'Dropped Text',
+                    name: 'Dropped Text',
+                    content: text,
+                    type: 'text',
+                    score: 100
+                });
+                updatePinnedSourcesDisplay();
+            }
+        }
+    });
+}
+
+async function processDroppedFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/upload-source', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('Error processing file:', data.error);
+            return;
+        }
+
+        pinnedSources.push({
+            path: data.name,
+            name: data.name,
+            content: data.content,
+            type: data.type,
+            mime_type: data.mime_type,
+            score: 100
+        });
+        updatePinnedSourcesDisplay();
+    } catch (e) {
+        console.error('Failed to process dropped file:', e);
+    }
+}
+
+async function processDroppedUrl(url) {
+    try {
+        const response = await fetch('/api/fetch-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('Error fetching URL:', data.error);
+            return;
+        }
+
+        pinnedSources.push({
+            path: data.url,
+            name: data.title,
+            content: data.content,
+            type: 'url',
+            score: 100
+        });
+        updatePinnedSourcesDisplay();
+    } catch (e) {
+        console.error('Failed to fetch dropped URL:', e);
+    }
+}
+
+// Pinned Sources Display
+function updatePinnedSourcesDisplay() {
+    const container = document.getElementById('pinned-sources');
+    const list = document.getElementById('pinned-sources-list');
+
+    if (pinnedSources.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    list.innerHTML = '';
+
+    pinnedSources.forEach((source, index) => {
+        const badge = document.createElement('div');
+        badge.className = `pinned-source-badge ${source.type}`;
+
+        const icon = source.type === 'vault' ?
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>' :
+            source.type === 'url' ?
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/></svg>' :
+            source.type === 'image' ?
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>' :
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M13 2v7h7"/></svg>';
+
+        badge.innerHTML = `
+            ${icon}
+            <span class="pinned-source-name" title="${source.path}">${source.name}</span>
+            <button class="remove-pinned-btn" onclick="removePinnedSource(${index})" title="Remove">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        `;
+        list.appendChild(badge);
+    });
+}
+
+function removePinnedSource(index) {
+    pinnedSources.splice(index, 1);
+    updatePinnedSourcesDisplay();
+}
+
+function clearPinnedSources() {
+    pinnedSources = [];
+    updatePinnedSourcesDisplay();
+}
+
+// Override fetchSources to combine with pinned sources
+const originalFetchSources = fetchSources;
+fetchSources = async function(query) {
+    // Get auto-found sources
+    const autoSources = await originalFetchSources(query);
+
+    // Combine with pinned sources (pinned first, avoiding duplicates)
+    const combined = [...pinnedSources];
+    autoSources.forEach(source => {
+        // Skip if already in pinned
+        if (!pinnedSources.some(p => p.path === source.path)) {
+            combined.push(source);
+        }
+    });
+
+    return combined;
+};
+
+// Reset pinned sources on new chat
+const originalNewChat = newChat;
+newChat = function() {
+    originalNewChat();
+    pinnedSources = [];
+    updatePinnedSourcesDisplay();
+};
+
+// =============================================================================
+// MCP (MODEL CONTEXT PROTOCOL) INTEGRATION
+// =============================================================================
+
+let mcpServers = [];
+
+async function loadMCPServers() {
+    try {
+        const response = await fetch('/api/mcp/servers');
+        const data = await response.json();
+        mcpServers = data.servers || [];
+        renderMCPServers();
+    } catch (e) {
+        console.error('Error loading MCP servers:', e);
+        document.getElementById('mcp-servers-list').innerHTML = '<div class="empty-state">No MCP servers configured</div>';
+    }
+}
+
+function renderMCPServers() {
+    const container = document.getElementById('mcp-servers-list');
+
+    if (mcpServers.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <p>No MCP servers configured</p>
+                <p class="help-text">Add an MCP server to access external tools and data sources</p>
+            </div>
+        `;
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    mcpServers.forEach(server => {
+        const serverEl = document.createElement('div');
+        serverEl.className = `mcp-server-item ${server.connected ? 'connected' : ''}`;
+        serverEl.innerHTML = `
+            <div class="mcp-server-info">
+                <div class="mcp-server-name">
+                    <span class="mcp-status-dot ${server.connected ? 'connected' : ''}"></span>
+                    ${server.name}
+                </div>
+                <div class="mcp-server-details">
+                    ${server.connected ? `${server.tools.length} tools, ${server.resources} resources` : server.command}
+                </div>
+            </div>
+            <div class="mcp-server-actions">
+                ${server.connected ?
+                    `<button class="btn-sm btn-secondary" onclick="disconnectMCPServer('${server.name}')">Disconnect</button>` :
+                    `<button class="btn-sm btn-primary" onclick="connectMCPServer('${server.name}')">Connect</button>`
+                }
+                <button class="btn-sm btn-danger" onclick="removeMCPServer('${server.name}')" title="Remove">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                    </svg>
+                </button>
+            </div>
+        `;
+        fragment.appendChild(serverEl);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(fragment);
+
+    // Load resources if any server is connected
+    if (mcpServers.some(s => s.connected)) {
+        loadMCPResources();
+    }
+}
+
+async function connectMCPServer(name) {
+    const serverEl = document.querySelector(`.mcp-server-item .mcp-server-name:has-text("${name}")`);
+    const btn = event.target;
+    btn.textContent = 'Connecting...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/mcp/servers/${name}/connect`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.success) {
+            await loadMCPServers();
+        } else {
+            alert(`Failed to connect: ${data.error}`);
+            btn.textContent = 'Connect';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        alert(`Connection error: ${e.message}`);
+        btn.textContent = 'Connect';
+        btn.disabled = false;
+    }
+}
+
+async function disconnectMCPServer(name) {
+    try {
+        await fetch(`/api/mcp/servers/${name}/disconnect`, { method: 'POST' });
+        await loadMCPServers();
+    } catch (e) {
+        console.error('Error disconnecting:', e);
+    }
+}
+
+async function removeMCPServer(name) {
+    if (!confirm(`Remove MCP server "${name}"?`)) return;
+
+    try {
+        await fetch(`/api/mcp/servers/${name}`, { method: 'DELETE' });
+        await loadMCPServers();
+    } catch (e) {
+        alert(`Failed to remove server: ${e.message}`);
+    }
+}
+
+async function loadMCPResources() {
+    const section = document.getElementById('mcp-resources-section');
+    const container = document.getElementById('mcp-resources-list');
+
+    try {
+        const response = await fetch('/api/mcp/resources');
+        const data = await response.json();
+
+        if (!data.resources || data.resources.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        container.innerHTML = '';
+
+        data.resources.forEach(resource => {
+            const resourceEl = document.createElement('div');
+            resourceEl.className = 'mcp-resource-item';
+            resourceEl.innerHTML = `
+                <div class="mcp-resource-info">
+                    <span class="mcp-resource-name">${resource.name || resource.uri}</span>
+                    <span class="mcp-resource-server">${resource.server}</span>
+                </div>
+                <button class="btn-sm btn-primary" onclick="addMCPResourceToPinned('${resource.server}', '${resource.uri}', '${resource.name || resource.uri}')">
+                    Add
+                </button>
+            `;
+            container.appendChild(resourceEl);
+        });
+    } catch (e) {
+        console.error('Error loading MCP resources:', e);
+        section.classList.add('hidden');
+    }
+}
+
+async function addMCPResourceToPinned(server, uri, name) {
+    try {
+        const response = await fetch('/api/mcp/resources/read', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ server, uri })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            alert(`Failed to read resource: ${data.error}`);
+            return;
+        }
+
+        pinnedSources.push({
+            path: uri,
+            name: name,
+            content: data.content,
+            type: 'mcp',
+            score: 100
+        });
+        updatePinnedSourcesDisplay();
+        alert('MCP resource added to sources!');
+    } catch (e) {
+        alert(`Error: ${e.message}`);
+    }
+}
+
+function openMCPServerConfig() {
+    document.getElementById('mcp-config-modal').classList.remove('hidden');
+    document.getElementById('mcp-server-name').value = '';
+    document.getElementById('mcp-server-command').value = '';
+    document.getElementById('mcp-server-args').value = '';
+}
+
+function closeMCPConfig() {
+    document.getElementById('mcp-config-modal').classList.add('hidden');
+}
+
+async function addMCPServer() {
+    const name = document.getElementById('mcp-server-name').value.trim();
+    const command = document.getElementById('mcp-server-command').value.trim();
+    const argsStr = document.getElementById('mcp-server-args').value.trim();
+
+    if (!name || !command) {
+        alert('Please enter a name and command');
+        return;
+    }
+
+    const args = argsStr ? argsStr.split(/\s+/) : [];
+
+    try {
+        const response = await fetch('/api/mcp/servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, command, args })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            closeMCPConfig();
+            await loadMCPServers();
+        } else {
+            alert(`Failed to add server: ${data.error}`);
+        }
+    } catch (e) {
+        alert(`Error: ${e.message}`);
+    }
+}
+
+// Load MCP servers when MCP tab is opened
+const originalSwitchSourceTab = switchSourceTab;
+switchSourceTab = function(tab) {
+    originalSwitchSourceTab(tab);
+    if (tab === 'mcp') {
+        loadMCPServers();
+    }
+};

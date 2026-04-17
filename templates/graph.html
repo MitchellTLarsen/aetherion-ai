@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relationship Graph - Aetherion</title>
+    <title>Relationship Graph - Scribe AI</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root {
@@ -349,7 +349,7 @@
 <body>
     <div class="header">
         <h1>
-            <a href="/">Aetherion</a> / Relationship Graph
+            <a href="/">Scribe AI</a> / Relationship Graph
         </h1>
         <div class="controls">
             <input type="text" id="search" placeholder="Search entities...">
@@ -418,6 +418,12 @@
         let pinnedNodes = new Set();
         let physicsEnabled = true;
         let drilledNode = null;  // Track which node we're drilled into
+        let vaultName = 'MyVault';
+
+        // Load vault name from API
+        fetch('/api/stats').then(r => r.json()).then(data => {
+            vaultName = data.vault_name || 'MyVault';
+        }).catch(() => {});
 
         // Load and render graph
         async function loadGraph() {
@@ -1062,7 +1068,7 @@
         function openInObsidian(file, name) {
             hideContextMenu();
             if (file) {
-                window.open(`obsidian://open?vault=Aetherion&file=${encodeURIComponent(file)}`, '_blank');
+                window.open(`obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(file)}`, '_blank');
             } else {
                 alert(`"${name}" is referenced but has no file yet.`);
             }

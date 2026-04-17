@@ -1,10 +1,10 @@
-# Aetherion AI
+# Scribe AI
 
-A RAG-powered CLI for semantic search and AI-assisted world-building over your Obsidian vault. Built for the Aetherion D&D campaign setting.
+A RAG-powered AI writing assistant for your Obsidian vault. Search, explore, and generate content grounded in your existing notes.
 
 ## What is RAG?
 
-**RAG (Retrieval Augmented Generation)** means the AI doesn't just make things up - it searches your vault first, finds relevant lore, and generates responses grounded in your existing content. This keeps your world consistent.
+**RAG (Retrieval Augmented Generation)** means the AI searches your vault first, finds relevant content, and generates responses grounded in your existing notes. This keeps everything consistent.
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
@@ -13,8 +13,8 @@ A RAG-powered CLI for semantic search and AI-assisted world-building over your O
 └─────────────┘     └──────────────┘     └─────────────┘     └──────────────┘
 ```
 
-Without RAG: "Tell me about Athamos" → AI invents random facts
-With RAG: "Tell me about Athamos" → AI reads your notes first, then responds accurately
+Without RAG: "Summarize my project" → AI invents random facts
+With RAG: "Summarize my project" → AI reads your notes first, then responds accurately
 
 ## Features
 
@@ -29,24 +29,31 @@ With RAG: "Tell me about Athamos" → AI reads your notes first, then responds a
 - **Multiple Providers** - OpenAI, Gemini, Claude, Ollama, Groq, OpenRouter
 
 ### Web Interface
-- **Character Voice Mode** - AI responds as your NPCs with their personality
+- **Manual Source Selection** - Pin specific notes, URLs, or files as context
+- **Drag & Drop** - Drop files or URLs directly into chat
+- **MCP Support** - Connect to Model Context Protocol servers
 - **Auto-Linking** - Convert entity names to [[wiki-links]]
 - **Save to Vault** - Write AI responses as new notes
 - **Relationship Graph** - Interactive D3.js visualization of vault connections
-- **Worldbuilding Hub** - Writing tools for fantasy worldbuilding
-- **Campaign Manager** - Full D&D campaign management with persistent state
+- **Consistency Checker** - Find contradictions across notes
 
-### Campaign Manager Features
-- **Initiative Tracker** - Combat turn order with HP, conditions, death saves
-- **Party Roster** - Live HP tracking, conditions, inspiration
-- **Quest Tracker** - Track quests with status and rewards
-- **Session Management** - Create sessions, generate recaps
-- **Resource Tracker** - Spell slots, abilities, long rest
-- **Rumor Board** - Track rumors with true/false/unknown status
-- **Secrets Tracker** - Track story secrets and revelations
-- **In-World Calendar** - Track campaign date, advance time
-- **Generators** - Encounters, loot, weather, shops, names
-- **Random Tables** - Roll on any table in your vault
+### Module System
+
+Enable specialized features for your workflow:
+
+#### Fantasy / TTRPG Module
+- **Worldbuilding Hub** - Name generators, NPC cards, factions, timelines
+- **Campaign Manager** - Initiative, resources, quests, session recaps
+- **Character Voice** - Chat as your characters with their personality
+- **Generators** - Encounters, loot, weather, shops, random tables
+
+#### Academic Module (Coming Soon)
+- Research organization and literature connections
+- Citation support and reference management
+
+#### Fiction Module (Coming Soon)
+- Character and plot development
+- Story arc tracking and narrative consistency
 
 ## Setup
 
@@ -428,7 +435,7 @@ Edit `config.py`:
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker model |
 | `DEFAULT_PROVIDER` | `gpt` | Default chat provider (`gpt` or `gemini`) |
 | `INCLUDE_FOLDERS` | `Database, Notes, Other Notes, Story` | Folders to index |
-| `OBSIDIAN_VAULT_NAME` | `Aetherion` | For clickable `obsidian://` links |
+| `OBSIDIAN_VAULT_NAME` | `MyVault` | For clickable `obsidian://` links |
 
 ## Methodology
 
@@ -628,6 +635,86 @@ pip install ollama     # For Ollama
 | **Embeddings** | `text-embedding-3-large` (OpenAI) | Converts text to 3072-dim vectors for semantic search |
 | **Chat/Generation** | Configurable per provider | Generates responses, expands content |
 | **Reranking** | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Runs locally, re-scores search results for accuracy |
+
+## Cost Reference
+
+Estimated costs per message based on vault size (Full Vault mode). Prices in USD per 1M tokens.
+
+### Vault Size Brackets
+
+| Size | Notes | Characters | Tokens (approx) |
+|------|-------|------------|-----------------|
+| **Small** | ~50 notes | ~200k chars | ~50k tokens |
+| **Medium** | ~200 notes | ~900k chars | ~225k tokens |
+| **Large** | ~500 notes | ~2M chars | ~500k tokens |
+| **XL** | ~1000+ notes | ~4M+ chars | ~1M+ tokens |
+
+### GPT-5 Family Costs (Standard Tier)
+
+| Model | Input $/1M | Small (50k) | Medium (225k) | Large (500k) |
+|-------|-----------|-------------|---------------|--------------|
+| **gpt-5-nano** | $0.05 | $0.003 | $0.01 | $0.025 |
+| **gpt-5.4-nano** | $0.20 | $0.01 | $0.05 | $0.10 |
+| **gpt-5-mini** | $0.25 | $0.01 | $0.06 | $0.13 |
+| **gpt-5.4-mini** | $0.75 | $0.04 | $0.17 | $0.38 |
+| **gpt-5** | $1.25 | $0.06 | $0.28 | $0.63 |
+| **gpt-5.2** | $1.75 | $0.09 | $0.39 | $0.88 |
+| **gpt-5.4** | $2.50 | $0.13 | $0.56 | $1.25 |
+| **gpt-5.4-pro** | $30.00 | $1.50 | $6.75 | $15.00 |
+
+### Other Providers
+
+| Provider | Model | Input $/1M | Small | Medium | Large |
+|----------|-------|-----------|-------|--------|-------|
+| **Gemini** | gemini-2.5-flash-lite | FREE | $0.00 | $0.00 | $0.00 |
+| **Gemini** | gemini-2.0-flash | $0.10 | $0.005 | $0.02 | $0.05 |
+| **Claude** | claude-sonnet-4 | $3.00 | $0.15 | $0.68 | $1.50 |
+| **Groq** | llama-3.3-70b | $0.59 | $0.03 | $0.13 | $0.30 |
+| **Ollama** | llama3 (local) | FREE | $0.00 | $0.00 | $0.00 |
+
+### With Prompt Caching (2nd+ message)
+
+When the same context is reused, OpenAI caches it at reduced rates:
+
+| Model | Cached $/1M | Medium (225k) Cached |
+|-------|------------|---------------------|
+| gpt-5-nano | $0.005 | $0.001 |
+| gpt-5.4-nano | $0.02 | $0.005 |
+| gpt-5.4-mini | $0.075 | $0.02 |
+| gpt-5.4 | $0.25 | $0.06 |
+
+### Context Window Limits
+
+| Model | Context Limit | Max Vault Size |
+|-------|--------------|----------------|
+| gpt-5.4 / gpt-5.4-pro | 272k tokens | ~1M chars |
+| gpt-5.x / gpt-4.x | 128k tokens | ~500k chars |
+| claude-sonnet-4 | 200k tokens | ~800k chars |
+| gemini-2.5-flash | 1M tokens | ~4M chars |
+| gemini-1.5-pro | 2M tokens | ~8M chars |
+
+When vault exceeds context limit, Scribe AI uses **smart context selection** - the LLM analyzes your query and selects the most relevant sources automatically.
+
+### Cost Recommendations
+
+| Use Case | Recommended | Cost |
+|----------|-------------|------|
+| **Free tier / testing** | Gemini or Ollama | $0.00 |
+| **Daily use (budget)** | gpt-5-nano | ~$0.01/msg |
+| **Daily use (quality)** | gpt-5.4-nano | ~$0.05/msg |
+| **Important queries** | gpt-5.4-mini | ~$0.17/msg |
+| **Complex analysis** | gpt-5.4 | ~$0.50/msg |
+| **Maximum quality** | gpt-5.4-pro | ~$7/msg |
+
+### RAG vs Full Vault Mode
+
+| Mode | Context Size | Cost | Best For |
+|------|-------------|------|----------|
+| **RAG (default)** | ~5-20 chunks (~2-8k tokens) | Very low | Most queries |
+| **Deep Search** | ~20-50 chunks (~8-20k tokens) | Low | Complex questions |
+| **Full Vault** | Entire vault | Higher | Cross-referencing, consistency checks |
+
+For most queries, RAG mode finds the relevant context automatically and costs a fraction of full vault mode.
 
 ## Tips
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worldbuilding Hub - Aetherion</title>
+    <title>Worldbuilding Hub - Scribe AI</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
@@ -398,7 +398,7 @@
 <body>
     <div class="header">
         <h1>
-            <a href="/">Aetherion</a> / Worldbuilding Hub
+            <a href="/">Scribe AI</a> / Worldbuilding Hub
         </h1>
         <div class="header-actions">
             <button onclick="location.href='/campaign'">Campaign Manager</button>
@@ -572,6 +572,12 @@
     <script>
         let selectedCulture = null;
         let namingPatterns = {};
+        let vaultName = 'MyVault';
+
+        // Load vault name from API
+        fetch('/api/stats').then(r => r.json()).then(data => {
+            vaultName = data.vault_name || 'MyVault';
+        }).catch(() => {});
 
         // Panel switching
         function showPanel(name) {
@@ -647,7 +653,7 @@
         }
 
         function openInObsidian(path) {
-            window.open(`obsidian://open?vault=Aetherion&file=${encodeURIComponent(path)}`, '_blank');
+            window.open(`obsidian://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(path)}`, '_blank');
         }
 
         // NPC Cards

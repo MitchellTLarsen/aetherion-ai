@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Aetherion AI - Writing and DM Assistant CLI
+Scribe AI - Writing Assistant CLI
 
-A semantic search and AI generation tool for the Aetherion world-building project.
+A semantic search and AI generation tool for your Obsidian vault.
 """
 import sys
 from pathlib import Path
@@ -95,7 +95,7 @@ def display_sources(sources: list[dict], console: Console):
 @click.group()
 @click.version_option(version="2.0.0")
 def cli():
-    """Aetherion AI - Your writing and DM assistant for the world of Gryia."""
+    """Scribe AI - Your writing and DM assistant for the your vault."""
     pass
 
 
@@ -105,7 +105,7 @@ def index(force: bool):
     """Index or update the vault embeddings."""
     from embeddings import index_vault, get_stats
 
-    console.print("[bold blue]Indexing Aetherion vault...[/bold blue]\n")
+    console.print("[bold blue]Indexing your vault...[/bold blue]\n")
 
     stats = index_vault(force=force)
 
@@ -325,8 +325,8 @@ def chat(provider: str, show_sources: bool, confirm: bool, stream: bool, session
             console.print(f"[yellow]No session '{session_name}' found, starting fresh[/yellow]")
 
     console.print(Panel(
-        "[bold]Welcome to Aetherion AI Chat[/bold]\n\n"
-        "Ask questions about the world of Gryia, get help with world-building,\n"
+        "[bold]Welcome to Scribe AI Chat[/bold]\n\n"
+        "Ask questions about the your vault, get help with world-building,\n"
         "or plan your D&D sessions. Type 'quit' or 'exit' to end.\n\n"
         "Commands:\n"
         "  /sources      - toggle source display\n"
@@ -342,7 +342,7 @@ def chat(provider: str, show_sources: bool, confirm: bool, stream: bool, session
         "  /deep         - use multi-query + compression\n\n"
         f"[dim]Using: {provider} | Sources: {'on' if show_sources else 'off'} | "
         f"Confirm: {'on' if confirm else 'off'} | Stream: {'on' if stream else 'off'}[/dim]",
-        title="Aetherion",
+        title="Scribe AI",
         border_style="blue"
     ))
 
@@ -523,7 +523,7 @@ def chat(provider: str, show_sources: bool, confirm: bool, stream: bool, session
                 first_chunk = next(stream_gen, "")
                 status.stop()
 
-            console.print("[bold green]Aetherion[/bold green]")
+            console.print("[bold green]Scribe[/bold green]")
             full_response = first_chunk
             with Live(Markdown(full_response), console=console, refresh_per_second=10) as live:
                 for chunk in stream_gen:
@@ -541,7 +541,7 @@ def chat(provider: str, show_sources: bool, confirm: bool, stream: bool, session
                     provider=provider,
                     system_prompt=custom_prompt
                 )
-            console.print("[bold green]Aetherion[/bold green]")
+            console.print("[bold green]Scribe[/bold green]")
             console.print(Markdown(response))
 
         # Update history
@@ -1469,7 +1469,7 @@ def web(port: int, host: str):
 
     Opens a browser-based chat UI similar to Gemini AI Studio.
     """
-    console.print(f"\n[bold blue]Aetherion AI Web Interface[/bold blue]")
+    console.print(f"\n[bold blue]Scribe AI Web Interface[/bold blue]")
     console.print(f"[dim]Starting server at http://{host}:{port}[/dim]\n")
 
     import webbrowser

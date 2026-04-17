@@ -21,7 +21,12 @@ from config import (
     GEMINI_EMBEDDING_MODEL,
     INCLUDE_FOLDERS,
     EXCLUDED_FILES,
+    SUPPORTED_EXTENSIONS,
 )
+import re
+import json
+import csv
+import io
 
 console = Console()
 
@@ -56,7 +61,7 @@ def get_chroma_client() -> chromadb.PersistentClient:
 
 
 def get_collection(client: chromadb.PersistentClient) -> chromadb.Collection:
-    """Get or create the Aetherion collection."""
+    """Get or create the Scribe AI collection."""
     # Use different collection names for different embedding providers
     collection_name = f"aetherion_{EMBEDDING_PROVIDER}"
     return client.get_or_create_collection(
@@ -67,8 +72,8 @@ def get_collection(client: chromadb.PersistentClient) -> chromadb.Collection:
 
 def should_index_file(file_path: Path) -> bool:
     """Check if a file should be indexed."""
-    # Skip non-markdown files
-    if file_path.suffix.lower() != ".md":
+    # Check if extension is supported
+    if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
         return False
 
     # Skip hidden folders (starting with .)
@@ -95,6 +100,175 @@ def should_index_file(file_path: Path) -> bool:
         return False
 
     return True
+
+
+def extract_text(file_path: Path) -> str:
+    """Extract text content from various file types."""
+    ext = file_path.suffix.lower()
+
+    try:
+        # Plain text formats - read directly
+        if ext in {".md", ".txt", ".rst", ".org"}:
+            return file_path.read_text(encoding="utf-8")
+
+        # HTML - strip tags
+        elif ext in {".html", ".htm"}:
+            content = file_path.read_text(encoding="utf-8")
+            return strip_html_tags(content)
+
+        # PDF - extract text
+        elif ext == ".pdf":
+            return extract_pdf_text(file_path)
+
+        # Word documents
+        elif ext == ".docx":
+            return extract_docx_text(file_path)
+
+        # RTF - strip formatting
+        elif ext == ".rtf":
+            return extract_rtf_text(file_path)
+
+        # LaTeX - strip commands
+        elif ext == ".tex":
+            content = file_path.read_text(encoding="utf-8")
+            return strip_latex_commands(content)
+
+        # JSON - pretty print
+        elif ext == ".json":
+            content = file_path.read_text(encoding="utf-8")
+            data = json.loads(content)
+            return json.dumps(data, indent=2)
+
+        # CSV - convert to readable text
+        elif ext == ".csv":
+            return extract_csv_text(file_path)
+
+        else:
+            # Fallback: try to read as text
+            return file_path.read_text(encoding="utf-8")
+
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not extract text from {file_path.name}: {e}[/yellow]")
+        return ""
+
+
+def strip_html_tags(html: str) -> str:
+    """Remove HTML tags and extract text."""
+    # Remove script and style elements
+    html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    # Remove HTML tags
+    html = re.sub(r'<[^>]+>', ' ', html)
+    # Clean up whitespace
+    html = re.sub(r'\s+', ' ', html)
+    # Decode HTML entities
+    html = html.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+    return html.strip()
+
+
+def extract_pdf_text(file_path: Path) -> str:
+    """Extract text from PDF files."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(file_path))
+        text_parts = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                text_parts.append(text)
+        return "\n\n".join(text_parts)
+    except ImportError:
+        try:
+            import PyPDF2
+            reader = PyPDF2.PdfReader(str(file_path))
+            text_parts = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    text_parts.append(text)
+            return "\n\n".join(text_parts)
+        except ImportError:
+            console.print("[yellow]PDF support requires: pip install pypdf[/yellow]")
+            return ""
+    except Exception as e:
+        console.print(f"[yellow]PDF extraction failed: {e}[/yellow]")
+        return ""
+
+
+def extract_docx_text(file_path: Path) -> str:
+    """Extract text from Word documents."""
+    try:
+        from docx import Document
+        doc = Document(str(file_path))
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+        return "\n\n".join(paragraphs)
+    except ImportError:
+        console.print("[yellow]DOCX support requires: pip install python-docx[/yellow]")
+        return ""
+    except Exception as e:
+        console.print(f"[yellow]DOCX extraction failed: {e}[/yellow]")
+        return ""
+
+
+def extract_rtf_text(file_path: Path) -> str:
+    """Extract text from RTF files."""
+    try:
+        from striprtf.striprtf import rtf_to_text
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
+        return rtf_to_text(content)
+    except ImportError:
+        # Fallback: basic RTF stripping
+        content = file_path.read_text(encoding="utf-8", errors="ignore")
+        # Remove RTF control words
+        content = re.sub(r'\\[a-z]+\d*\s?', '', content)
+        content = re.sub(r'[{}]', '', content)
+        return content.strip()
+    except Exception as e:
+        console.print(f"[yellow]RTF extraction failed: {e}[/yellow]")
+        return ""
+
+
+def strip_latex_commands(latex: str) -> str:
+    """Strip LaTeX commands and extract text."""
+    # Remove comments
+    latex = re.sub(r'%.*$', '', latex, flags=re.MULTILINE)
+    # Remove common environments
+    latex = re.sub(r'\\begin\{[^}]+\}', '', latex)
+    latex = re.sub(r'\\end\{[^}]+\}', '', latex)
+    # Remove commands with arguments
+    latex = re.sub(r'\\[a-zA-Z]+\{([^}]*)\}', r'\1', latex)
+    # Remove commands without arguments
+    latex = re.sub(r'\\[a-zA-Z]+', ' ', latex)
+    # Remove special characters
+    latex = re.sub(r'[{}$^_&~]', '', latex)
+    # Clean up whitespace
+    latex = re.sub(r'\s+', ' ', latex)
+    return latex.strip()
+
+
+def extract_csv_text(file_path: Path) -> str:
+    """Convert CSV to readable text."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+        reader = csv.reader(io.StringIO(content))
+        rows = list(reader)
+        if not rows:
+            return ""
+
+        # Format as readable text
+        headers = rows[0] if rows else []
+        text_parts = []
+
+        for row in rows[1:]:
+            if row:
+                row_text = ", ".join(f"{h}: {v}" for h, v in zip(headers, row) if v.strip())
+                if row_text:
+                    text_parts.append(row_text)
+
+        return "\n".join(text_parts)
+    except Exception as e:
+        console.print(f"[yellow]CSV extraction failed: {e}[/yellow]")
+        return ""
 
 
 def get_file_hash(content: str) -> str:
@@ -226,8 +400,12 @@ def index_vault(force: bool = False) -> dict:
         except Exception:
             pass
 
-    # Find all markdown files
-    md_files = [f for f in VAULT_PATH.rglob("*.md") if should_index_file(f)]
+    # Find all supported files
+    all_files = []
+    for ext in SUPPORTED_EXTENSIONS:
+        all_files.extend(f for f in VAULT_PATH.rglob(f"*{ext}") if should_index_file(f))
+    # Remove duplicates (in case of overlapping patterns)
+    all_files = list(set(all_files))
 
     stats = {"indexed": 0, "skipped": 0, "chunks": 0, "errors": 0}
 
@@ -239,11 +417,15 @@ def index_vault(force: bool = False) -> dict:
         TimeElapsedColumn(),
         console=console
     ) as progress:
-        task = progress.add_task("Indexing vault...", total=len(md_files))
+        task = progress.add_task("Indexing vault...", total=len(all_files))
 
-        for file_path in md_files:
+        for file_path in all_files:
             try:
-                content = file_path.read_text(encoding="utf-8")
+                content = extract_text(file_path)
+                if not content.strip():
+                    stats["skipped"] += 1
+                    progress.advance(task)
+                    continue
                 file_hash = get_file_hash(content)
                 rel_path = str(file_path.relative_to(VAULT_PATH))
 

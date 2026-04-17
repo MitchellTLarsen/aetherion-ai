@@ -1,14 +1,19 @@
 """
-Aetherion AI Web Interface
+Scribe AI Web Interface
 
 Flask-based web UI with streaming chat, similar to Gemini AI Studio.
 """
 
 import json
+import re
+import base64
+from pathlib import Path
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 
-from config import SYSTEM_PROMPT, DEFAULT_PROVIDER, VAULT_PATH, OBSIDIAN_VAULT_NAME
+from config import SYSTEM_PROMPT, DEFAULT_PROVIDER, VAULT_PATH, OBSIDIAN_VAULT_NAME, get_system_prompt
+from features import iter_vault_files, read_file_safe
+from mcp_client import get_mcp_client
 from search import search as vault_search
 from generate import (
     get_context_only, chat_with_context_stream, chat_with_context,
@@ -19,6 +24,29 @@ from embeddings import get_stats
 
 app = Flask(__name__)
 CORS(app)
+
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+def stream_ai_response(prompt: str, system_prompt: str, provider: str = None):
+    """Helper to create streaming AI response endpoints."""
+    provider = provider or DEFAULT_PROVIDER
+
+    def generate():
+        try:
+            stream = chat_with_context_stream(
+                prompt, sources=[], history=[],
+                provider=provider, system_prompt=system_prompt
+            )
+            for chunk in stream:
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            yield f"data: {json.dumps({'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 # In-memory session storage (use Redis/DB for production)
 sessions = {}
@@ -34,6 +62,7 @@ def index():
 def api_stats():
     """Get vault statistics."""
     stats = get_stats()
+    stats["vault_name"] = OBSIDIAN_VAULT_NAME
     return jsonify(stats)
 
 
@@ -92,6 +121,388 @@ def api_sources():
         })
 
     return jsonify({"sources": formatted})
+
+
+# =============================================================================
+# MANUAL SOURCE SELECTION
+# =============================================================================
+
+@app.route("/api/vault/notes", methods=["GET"])
+def api_vault_notes():
+    """List all vault notes for manual selection."""
+    notes = []
+    for md_file in iter_vault_files():
+        rel_path = md_file.relative_to(VAULT_PATH)
+        notes.append({
+            "path": str(rel_path),
+            "name": md_file.stem,
+            "folder": str(rel_path.parent) if str(rel_path.parent) != "." else ""
+        })
+
+    # Sort by folder then name
+    notes.sort(key=lambda x: (x["folder"], x["name"].lower()))
+    return jsonify({"notes": notes})
+
+
+@app.route("/api/vault/full", methods=["GET"])
+def api_vault_full():
+    """Get full content of all indexed vault notes for complete context mode."""
+    from embeddings import should_index_file, extract_text, SUPPORTED_EXTENSIONS
+    from config import INCLUDE_FOLDERS
+
+    all_content = []
+    total_chars = 0
+    max_chars = 500000  # ~125k tokens, reasonable limit
+
+    # Find all supported files
+    all_files = []
+    for ext in SUPPORTED_EXTENSIONS:
+        all_files.extend(f for f in VAULT_PATH.rglob(f"*{ext}") if should_index_file(f))
+    all_files = list(set(all_files))
+
+    # Sort by path for consistent ordering
+    all_files.sort(key=lambda f: str(f))
+
+    for file_path in all_files:
+        if total_chars >= max_chars:
+            break
+
+        content = extract_text(file_path)
+        if not content.strip():
+            continue
+
+        rel_path = str(file_path.relative_to(VAULT_PATH))
+
+        # Add file with header
+        file_content = f"# {rel_path}\n\n{content}\n\n---\n\n"
+        all_content.append({
+            "path": rel_path,
+            "name": file_path.stem,
+            "content": content
+        })
+        total_chars += len(content)
+
+    return jsonify({
+        "sources": all_content,
+        "total_files": len(all_content),
+        "total_chars": total_chars,
+        "truncated": total_chars >= max_chars
+    })
+
+
+@app.route("/api/vault/note", methods=["POST"])
+def api_vault_note():
+    """Get full content of a specific vault note."""
+    data = request.json
+    path = data.get("path", "")
+
+    if not path:
+        return jsonify({"error": "No path provided"}), 400
+
+    full_path = VAULT_PATH / path
+    if not full_path.exists():
+        return jsonify({"error": "Note not found"}), 404
+
+    content = read_file_safe(full_path)
+    if content is None:
+        return jsonify({"error": "Failed to read note"}), 500
+
+    return jsonify({
+        "path": path,
+        "name": full_path.stem,
+        "content": content,
+        "type": "vault"
+    })
+
+
+@app.route("/api/fetch-url", methods=["POST"])
+def api_fetch_url():
+    """Fetch and parse content from a URL."""
+    import urllib.request
+    import urllib.error
+    from html.parser import HTMLParser
+
+    data = request.json
+    url = data.get("url", "").strip()
+
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    # Add https if no protocol
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    try:
+        # Fetch URL
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; ScribeAI/1.0)"
+        })
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8', errors='ignore')
+
+        # Simple HTML to text conversion
+        class TextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text = []
+                self.skip_tags = {'script', 'style', 'nav', 'footer', 'header'}
+                self.in_skip = 0
+                self.title = ""
+                self.in_title = False
+
+            def handle_starttag(self, tag, attrs):
+                if tag in self.skip_tags:
+                    self.in_skip += 1
+                if tag == 'title':
+                    self.in_title = True
+
+            def handle_endtag(self, tag):
+                if tag in self.skip_tags:
+                    self.in_skip = max(0, self.in_skip - 1)
+                if tag == 'title':
+                    self.in_title = False
+                if tag in ('p', 'div', 'br', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'):
+                    self.text.append('\n')
+
+            def handle_data(self, data):
+                if self.in_title:
+                    self.title = data.strip()
+                elif self.in_skip == 0:
+                    self.text.append(data)
+
+        parser = TextExtractor()
+        parser.feed(html)
+        text = ' '.join(parser.text)
+        # Clean up whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+
+        # Truncate if too long
+        max_len = 15000
+        if len(text) > max_len:
+            text = text[:max_len] + "\n\n[Content truncated...]"
+
+        return jsonify({
+            "url": url,
+            "title": parser.title or url,
+            "content": text,
+            "type": "url"
+        })
+
+    except urllib.error.URLError as e:
+        return jsonify({"error": f"Failed to fetch URL: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error processing URL: {str(e)}"}), 500
+
+
+@app.route("/api/upload-source", methods=["POST"])
+def api_upload_source():
+    """Process an uploaded file as a source."""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    filename = file.filename
+    content = ""
+    file_type = "file"
+
+    # Determine file type and extract content
+    ext = Path(filename).suffix.lower()
+
+    if ext in ('.txt', '.md', '.markdown'):
+        # Text files
+        content = file.read().decode('utf-8', errors='ignore')
+
+    elif ext == '.pdf':
+        # PDF files - try to extract text
+        try:
+            import io
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(io.BytesIO(file.read()))
+                content = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+            except ImportError:
+                # Try alternate PDF library
+                try:
+                    import PyPDF2
+                    reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+                    content = "\n\n".join(page.extract_text() or "" for page in reader.pages)
+                except ImportError:
+                    return jsonify({"error": "PDF support not installed (pip install pypdf)"}), 400
+        except Exception as e:
+            return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 400
+
+    elif ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
+        # Images - return base64 for vision models
+        file_type = "image"
+        img_data = file.read()
+        content = base64.b64encode(img_data).decode('utf-8')
+        return jsonify({
+            "name": filename,
+            "content": content,
+            "mime_type": f"image/{ext[1:]}",
+            "type": file_type
+        })
+
+    elif ext == '.json':
+        # JSON files
+        content = file.read().decode('utf-8', errors='ignore')
+        try:
+            # Pretty print JSON
+            content = json.dumps(json.loads(content), indent=2)
+        except json.JSONDecodeError:
+            pass
+
+    elif ext in ('.csv', '.tsv'):
+        # CSV/TSV files
+        content = file.read().decode('utf-8', errors='ignore')
+
+    else:
+        # Try to read as text
+        try:
+            content = file.read().decode('utf-8', errors='ignore')
+        except Exception:
+            return jsonify({"error": f"Unsupported file type: {ext}"}), 400
+
+    # Truncate if too long
+    max_len = 20000
+    if len(content) > max_len:
+        content = content[:max_len] + "\n\n[Content truncated...]"
+
+    return jsonify({
+        "name": filename,
+        "content": content,
+        "type": file_type
+    })
+
+
+# =============================================================================
+# MCP (MODEL CONTEXT PROTOCOL) INTEGRATION
+# =============================================================================
+
+@app.route("/api/mcp/servers", methods=["GET"])
+def api_mcp_servers():
+    """List all configured MCP servers."""
+    client = get_mcp_client()
+    return jsonify({"servers": client.list_servers()})
+
+
+@app.route("/api/mcp/servers", methods=["POST"])
+def api_mcp_add_server():
+    """Add a new MCP server configuration."""
+    data = request.json
+    name = data.get("name", "")
+    command = data.get("command", "")
+    args = data.get("args", [])
+    env = data.get("env", {})
+
+    if not name or not command:
+        return jsonify({"error": "Name and command are required"}), 400
+
+    client = get_mcp_client()
+    if client.add_server(name, command, args, env):
+        return jsonify({"success": True, "message": f"Server '{name}' added"})
+    return jsonify({"error": f"Server '{name}' already exists"}), 400
+
+
+@app.route("/api/mcp/servers/<name>", methods=["DELETE"])
+def api_mcp_remove_server(name):
+    """Remove an MCP server configuration."""
+    client = get_mcp_client()
+    if client.remove_server(name):
+        return jsonify({"success": True, "message": f"Server '{name}' removed"})
+    return jsonify({"error": f"Server '{name}' not found"}), 404
+
+
+@app.route("/api/mcp/servers/<name>/connect", methods=["POST"])
+def api_mcp_connect(name):
+    """Connect to an MCP server."""
+    client = get_mcp_client()
+    if name not in client.servers:
+        return jsonify({"error": f"Server '{name}' not found"}), 404
+
+    if client.connect(name):
+        server = client.servers[name]
+        return jsonify({
+            "success": True,
+            "tools": server.tools,
+            "resources": server.resources
+        })
+    return jsonify({"error": f"Failed to connect to '{name}'"}), 500
+
+
+@app.route("/api/mcp/servers/<name>/disconnect", methods=["POST"])
+def api_mcp_disconnect(name):
+    """Disconnect from an MCP server."""
+    client = get_mcp_client()
+    if client.disconnect(name):
+        return jsonify({"success": True})
+    return jsonify({"error": f"Server '{name}' not found"}), 404
+
+
+@app.route("/api/mcp/tools", methods=["GET"])
+def api_mcp_tools():
+    """Get all available tools from connected MCP servers."""
+    client = get_mcp_client()
+    return jsonify({"tools": client.get_all_tools()})
+
+
+@app.route("/api/mcp/tools/call", methods=["POST"])
+def api_mcp_call_tool():
+    """Call a tool on an MCP server."""
+    data = request.json
+    server = data.get("server", "")
+    tool = data.get("tool", "")
+    arguments = data.get("arguments", {})
+
+    if not server or not tool:
+        return jsonify({"error": "Server and tool are required"}), 400
+
+    client = get_mcp_client()
+    result = client.call_tool(server, tool, arguments)
+    if result:
+        return jsonify({"result": result})
+    return jsonify({"error": "Failed to call tool"}), 500
+
+
+@app.route("/api/mcp/resources", methods=["GET"])
+def api_mcp_resources():
+    """Get all available resources from connected MCP servers."""
+    client = get_mcp_client()
+    return jsonify({"resources": client.get_all_resources()})
+
+
+@app.route("/api/mcp/resources/read", methods=["POST"])
+def api_mcp_read_resource():
+    """Read a resource from an MCP server and add it as a source."""
+    data = request.json
+    server = data.get("server", "")
+    uri = data.get("uri", "")
+
+    if not server or not uri:
+        return jsonify({"error": "Server and URI are required"}), 400
+
+    client = get_mcp_client()
+    result = client.read_resource(server, uri)
+    if result:
+        # Format as a source
+        contents = result.get("contents", [])
+        content_text = ""
+        for item in contents:
+            if "text" in item:
+                content_text += item["text"] + "\n"
+
+        return jsonify({
+            "uri": uri,
+            "name": uri.split("/")[-1] or uri,
+            "content": content_text,
+            "type": "mcp",
+            "server": server
+        })
+    return jsonify({"error": "Failed to read resource"}), 500
 
 
 @app.route("/api/estimate", methods=["POST"])
@@ -156,11 +567,20 @@ def api_chat():
 @app.route("/api/chat/stream", methods=["POST"])
 def api_chat_stream():
     """Streaming chat endpoint using Server-Sent Events."""
+    from generate import smart_select_context
+    from costs import count_tokens, get_model_for_provider, get_context_limit
+
     data = request.json
     message = data.get("message", "")
     history = data.get("history", [])
     sources = data.get("sources", [])
     provider = data.get("provider", DEFAULT_PROVIDER)
+    modules = data.get("modules", [])  # Active modules for context-aware prompts
+    custom_prompt = data.get("customPrompt", "")  # User's custom prompt extension
+    full_vault = data.get("fullVault", False)  # Full vault mode flag
+
+    # Get module-aware system prompt (with optional custom extension)
+    system_prompt = get_system_prompt(modules, custom_prompt) if (modules or custom_prompt) else SYSTEM_PROMPT
 
     # Convert sources to expected format
     formatted_sources = []
@@ -173,14 +593,33 @@ def api_chat_stream():
             "content": s.get("content", "")
         })
 
+    # If full vault mode and context is large, use smart selection
+    if full_vault and formatted_sources:
+        model = get_model_for_provider(provider)
+        context_limit = get_context_limit(model)
+        total_content = "\n\n".join(s.get("content", "") for s in formatted_sources)
+        total_tokens = count_tokens(total_content, model)
+
+        if total_tokens > context_limit - 10000:  # Leave room for prompt/response
+            formatted_sources = smart_select_context(
+                message,
+                formatted_sources,
+                max_tokens=context_limit,
+                provider=provider
+            )
+
     def generate():
         try:
+            # Notify if context was compressed
+            if full_vault and len(formatted_sources) < len(sources):
+                yield f"data: {json.dumps({'info': f'Context compressed to {len(formatted_sources)} most relevant sources'})}\n\n"
+
             stream = chat_with_context_stream(
                 message,
                 sources=formatted_sources,
                 history=history,
                 provider=provider,
-                system_prompt=SYSTEM_PROMPT
+                system_prompt=system_prompt
             )
 
             for chunk in stream:
@@ -524,37 +963,12 @@ def api_npc_card(name):
 def api_generate_npc_card():
     """Generate NPC quick card using AI."""
     from features import get_npc_for_card, build_npc_card_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    name = data.get("name", "")
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
-    npc = get_npc_for_card(name)
+    npc = get_npc_for_card(data.get("name", ""))
     if not npc:
         return jsonify({"error": "NPC not found"}), 404
-
     prompt = build_npc_card_prompt(npc["name"], npc["content"])
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a D&D game master assistant. Create concise, useful NPC reference cards."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    return stream_ai_response(prompt, "Create concise, useful NPC reference cards.", data.get("provider"))
 
 
 @app.route("/api/campaign/names")
@@ -568,38 +982,13 @@ def api_naming_patterns():
 def api_generate_names():
     """Generate names for a culture."""
     from features import analyze_naming_patterns, build_name_generator_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
     culture = data.get("culture", "")
-    count = data.get("count", 10)
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
     patterns = analyze_naming_patterns()
     if culture not in patterns:
         return jsonify({"error": "Culture not found"}), 404
-
-    prompt = build_name_generator_prompt(culture, patterns[culture], count)
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a fantasy name generator. Generate names that match the given cultural style."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    prompt = build_name_generator_prompt(culture, patterns[culture], data.get("count", 10))
+    return stream_ai_response(prompt, "Generate names that match the given cultural style.", data.get("provider"))
 
 
 @app.route("/api/campaign/timeline")
@@ -637,67 +1026,18 @@ def api_lore_gaps():
 def api_expand_description():
     """Expand brief notes into vivid prose."""
     from features import build_description_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    notes = data.get("notes", "")
-    context = data.get("context", "")
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
-    prompt = build_description_prompt(notes, context)
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a fantasy writer. Expand notes into vivid, immersive prose."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    prompt = build_description_prompt(data.get("notes", ""), data.get("context", ""))
+    return stream_ai_response(prompt, "Expand notes into vivid, immersive prose.", data.get("provider"))
 
 
 @app.route("/api/campaign/sensory", methods=["POST"])
 def api_sensory_enrich():
     """Add sensory details to a description."""
     from features import build_sensory_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    description = data.get("description", "")
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
-    prompt = build_sensory_prompt(description)
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a fantasy writer specializing in immersive descriptions."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    prompt = build_sensory_prompt(data.get("description", ""))
+    return stream_ai_response(prompt, "Add rich sensory details to this description.", data.get("provider"))
 
 
 # =============================================================================
@@ -912,76 +1252,20 @@ def api_calendar():
 def api_generate_encounter():
     """Generate an encounter."""
     from features import build_encounter_prompt, get_party_members
-    from generate import chat_with_context_stream
-
     data = request.json
-    setting = data.get("setting", "")
-    difficulty = data.get("difficulty", "medium")
-    encounter_type = data.get("type", "combat")
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
     party = get_party_members()
-    party_text = "\n".join([
-        f"- {p['name']}: Level {p.get('level', '?')} {p.get('class', 'Unknown')}"
-        for p in party
-    ])
-
-    prompt = build_encounter_prompt(party_text, setting, difficulty, encounter_type)
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a D&D encounter designer."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    party_text = "\n".join([f"- {p['name']}: Level {p.get('level', '?')} {p.get('class', 'Unknown')}" for p in party])
+    prompt = build_encounter_prompt(party_text, data.get("setting", ""), data.get("difficulty", "medium"), data.get("type", "combat"))
+    return stream_ai_response(prompt, "Design a D&D encounter.", data.get("provider"))
 
 
 @app.route("/api/loot/generate", methods=["POST"])
 def api_generate_loot():
     """Generate loot for an encounter."""
     from features import build_loot_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    level = data.get("level", 5)
-    encounter_type = data.get("type", "combat")
-    setting = data.get("setting", "")
-    provider = data.get("provider", DEFAULT_PROVIDER)
-
-    prompt = build_loot_prompt(level, encounter_type, setting)
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt,
-                sources=[],
-                history=[],
-                provider=provider,
-                system_prompt="You are a D&D loot generator."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype="text/event-stream"
-    )
+    prompt = build_loot_prompt(data.get("level", 5), data.get("type", "combat"), data.get("setting", ""))
+    return stream_ai_response(prompt, "Generate contextual D&D loot.", data.get("provider"))
 
 
 # =============================================================================
@@ -1329,30 +1613,9 @@ def api_generate_weather():
 def api_generate_shop():
     """Generate shop inventory."""
     from features import build_shop_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    prompt = build_shop_prompt(
-        shop_type=data.get("shop_type", "general store"),
-        settlement=data.get("settlement", "town"),
-        level=data.get("level", 5),
-        notes=data.get("notes", "")
-    )
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt, sources=[], history=[],
-                provider=data.get("provider", "gemini"),
-                system_prompt="You are a fantasy shop inventory generator."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    prompt = build_shop_prompt(data.get("shop_type", "general store"), data.get("settlement", "town"), data.get("level", 5), data.get("notes", ""))
+    return stream_ai_response(prompt, "Generate a fantasy shop inventory.", data.get("provider"))
 
 
 # =============================================================================
@@ -1363,25 +1626,8 @@ def api_generate_shop():
 def api_player_recap():
     """Generate player-facing recap."""
     from features import build_player_recap_prompt
-    from generate import chat_with_context_stream
-
     data = request.json
-    prompt = build_player_recap_prompt(data.get("notes", ""))
-
-    def generate():
-        try:
-            stream = chat_with_context_stream(
-                prompt, sources=[], history=[],
-                provider=data.get("provider", "gemini"),
-                system_prompt="You are writing a fun, spoiler-free session recap for players."
-            )
-            for chunk in stream:
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-            yield f"data: {json.dumps({'done': True})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-
-    return Response(stream_with_context(generate()), mimetype="text/event-stream")
+    return stream_ai_response(build_player_recap_prompt(data.get("notes", "")), "Write a fun, spoiler-free session recap.", data.get("provider"))
 
 
 # =============================================================================
@@ -1428,6 +1674,6 @@ def api_quick_name():
 
 
 if __name__ == "__main__":
-    print("\n  Aetherion AI Web Interface")
+    print("\n  Scribe AI Web Interface")
     print("  http://localhost:5000\n")
     app.run(debug=True, port=5000, threaded=True)
