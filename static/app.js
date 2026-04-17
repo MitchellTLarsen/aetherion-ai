@@ -652,6 +652,9 @@ async function sendMessage() {
             addSourceBadges(assistantMessage, state.sources.slice(0, 5));
         }
 
+        // Add action buttons (Save as TODO for full vault reviews)
+        addMessageActions(assistantMessage, fullResponse, message);
+
         // Update history
         state.history.push({ role: 'user', content: message });
         state.history.push({ role: 'assistant', content: fullResponse });
@@ -737,6 +740,90 @@ function addSourceBadges(messageEl, sources) {
     });
 
     contentEl.appendChild(badgesEl);
+}
+
+function addMessageActions(messageEl, content, query) {
+    const contentEl = messageEl.querySelector('.message-content');
+    const actionsEl = document.createElement('div');
+    actionsEl.className = 'message-actions';
+
+    // Save as TODO button
+    const todoBtn = document.createElement('button');
+    todoBtn.className = 'action-btn';
+    todoBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        Save as TODO
+    `;
+    todoBtn.onclick = () => saveTodo(content, query);
+    actionsEl.appendChild(todoBtn);
+
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'action-btn';
+    copyBtn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+        </svg>
+        Copy
+    `;
+    copyBtn.onclick = () => {
+        navigator.clipboard.writeText(content);
+        copyBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            Copied!
+        `;
+        setTimeout(() => {
+            copyBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+                Copy
+            `;
+        }, 2000);
+    };
+    actionsEl.appendChild(copyBtn);
+
+    contentEl.appendChild(actionsEl);
+}
+
+async function saveTodo(content, query) {
+    // Prompt for title
+    const title = prompt('Enter a title for this TODO list:', 'Vault Review');
+    if (title === null) return; // Cancelled
+
+    try {
+        const response = await fetch('/api/save-todo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                content,
+                title,
+                query
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            showNotification(`Saved to ${data.path}`, 'success');
+            // Open in Obsidian if available
+            if (data.obsidian_url) {
+                window.open(data.obsidian_url, '_blank');
+            }
+        } else {
+            showNotification(data.error || 'Failed to save', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving TODO:', error);
+        showNotification('Failed to save TODO', 'error');
+    }
 }
 
 function showLoading() {
